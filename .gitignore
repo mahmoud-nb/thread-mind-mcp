@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.claude/
+*.tsbuildinfo
+docs/.vitepress/dist/
+docs/.vitepress/cache/

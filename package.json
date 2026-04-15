@@ -1,0 +1,71 @@
+{
+  "name": "thread-mind-mcp",
+  "version": "0.1.0",
+  "description": "MCP server to organize AI conversations into thread trees, reducing token consumption",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "thread-mind-mcp": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx --watch src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "prebuild": "npm run clean",
+    "prepublishOnly": "npm run test && npm run build",
+    "release:patch": "npm version patch && npm publish",
+    "release:minor": "npm version minor && npm publish",
+    "release:major": "npm version major && npm publish",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "threads",
+    "context-management",
+    "token-optimization",
+    "claude",
+    "chatgpt",
+    "llm",
+    "conversation-management"
+  ],
+  "license": "MIT",
+  "author": {
+    "name": "Mahmoud NBET",
+    "email": "mahmoud.nb@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mahmoud-nb/thread-mind-mcp"
+  },
+  "bugs": {
+    "url": ""
+  },
+  "homepage": "",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vitepress": "^1.6.4",
+    "vitest": "^3.0.0"
+  }
+}
