@@ -1,6 +1,6 @@
 {
   "name": "thread-mind-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP server to organize AI conversations into thread trees, reducing token consumption",
   "type": "module",
   "main": "./dist/index.js",
