@@ -205,9 +205,11 @@ Les instructions générées demandent à l'IA de :
 
 ## Prompts MCP
 
-ThreadMind fournit également 2 Prompts MCP — des templates structurés que les clients peuvent invoquer.
+ThreadMind fournit 10 Prompts MCP — des templates structurés que les clients peuvent invoquer comme slash commands.
 
-### `start-thread`
+### Prompts principaux
+
+#### `start-thread`
 
 Charge et injecte le contexte assemblé au début d'une session.
 
@@ -215,21 +217,57 @@ Charge et injecte le contexte assemblé au début d'une session.
 
 **Retourne :** Un message utilisateur contenant le contexte assemblé complet avec estimation des tokens.
 
-**Cas d'usage :** Invoquez ce prompt au début d'une nouvelle conversation pour initialiser l'IA avec le contexte de votre arbre de threads.
+**Cas d'usage :** Invoquez au début d'une nouvelle conversation pour initialiser l'IA avec le contexte de votre arbre de threads.
 
-### `summarize-thread`
+#### `summarize-thread`
 
 Guide l'IA pour générer un résumé structuré du thread courant.
 
-**Arguments :** Aucun
+**Arguments :**
 
-**Retourne :** Un message utilisateur avec des instructions pour que l'IA résume la discussion en cours, couvrant :
-- Les décisions clés prises
-- Les choix techniques et leur justification
-- L'état actuel / ce qui est implémenté
-- Les questions ouvertes ou prochaines étapes
+| Nom | Type | Requis | Description |
+|-----|------|--------|-------------|
+| `topic` | `string` | Non | Brève description de ce qui a été discuté |
 
-**Cas d'usage :** Invoquez ce prompt après une discussion productive pour générer un résumé, puis utilisez `summary_update` pour le sauvegarder.
+**Retourne :** Des instructions pour que l'IA résume la discussion et la sauvegarde via `summary_update`.
+
+### Prompts raccourcis
+
+Ces prompts servent de raccourcis — chacun déclenche immédiatement l'outil correspondant.
+
+| Prompt | Raccourci pour | Arguments |
+|--------|---------------|-----------|
+| `tm-help` | — | Aucun |
+| `tm-context` | `context_get` | Aucun |
+| `tm-tree` | `thread_list` | Aucun |
+| `tm-create` | `thread_create` | `title` (requis) |
+| `tm-switch` | `thread_switch` | `threadId` (requis) |
+| `tm-summary` | `summary_update` | `content` (optionnel — auto-génère si omis) |
+| `tm-stats` | `stats_show` | Aucun |
+| `tm-init` | `threadmind_init` | Aucun |
+
+Dans Claude Code, ils apparaissent comme `/mcp__thread-mind__tm-help`, `/mcp__thread-mind__tm-create`, etc.
+
+### Raccourcis texte (commandes `tm:`)
+
+Après avoir exécuté `threadmind_init`, le fichier `CLAUDE.md` généré apprend à l'IA à reconnaître des commandes courtes tapées directement dans le chat :
+
+```
+tm:help                → Afficher toutes les commandes
+tm:context             → context_get
+tm:tree                → thread_list
+tm:create Auth System  → thread_create(title: "Auth System")
+tm:switch auth-ui      → thread_switch(threadId: "auth-ui")
+tm:summary             → Auto-générer + sauvegarder le résumé
+tm:summary <contenu>   → summary_update(content: ...)
+tm:stats               → stats_show
+tm:delete auth-api     → thread_delete(threadId: "auth-api")
+tm:init                → threadmind_init
+tm:project Mon App     → project_create(title: "Mon App")
+tm:projects            → project_list
+```
+
+Ces raccourcis fonctionnent dans tout client IA qui lit `CLAUDE.md` ou `.cursorrules`.
 
 ---
 

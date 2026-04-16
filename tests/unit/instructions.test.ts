@@ -84,6 +84,25 @@ describe("generateInstructions", () => {
     expect(result.files[0].client).toBe("claude");
   });
 
+  it("includes tm: shortcuts in all instruction files", async () => {
+    const result = await generateInstructions({
+      projectTitle: "My App",
+      basePath: tempDir,
+    });
+
+    for (const file of result.files) {
+      const content = await readFile(file.path, "utf-8");
+      expect(content).toContain("tm:help");
+      expect(content).toContain("tm:context");
+      expect(content).toContain("tm:create");
+      expect(content).toContain("tm:switch");
+      expect(content).toContain("tm:summary");
+      expect(content).toContain("tm:stats");
+      expect(content).toContain("tm:tree");
+      expect(content).toContain("Quick Shortcuts");
+    }
+  });
+
   it("includes project title in all files", async () => {
     const result = await generateInstructions({
       projectTitle: "Special Project Name",

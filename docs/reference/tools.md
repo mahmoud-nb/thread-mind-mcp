@@ -215,9 +215,11 @@ The generated instructions tell the AI to:
 
 ## MCP Prompts
 
-ThreadMind also provides 2 MCP Prompts — structured templates that clients can invoke.
+ThreadMind provides 10 MCP Prompts — structured templates that clients can invoke as slash commands.
 
-### `start-thread`
+### Core Prompts
+
+#### `start-thread`
 
 Load and inject the assembled context at the start of a session.
 
@@ -225,21 +227,57 @@ Load and inject the assembled context at the start of a session.
 
 **Returns:** A user message containing the full assembled context with token estimation.
 
-**Use case:** Invoke this prompt at the beginning of a new conversation to bootstrap the AI with your thread tree context.
+**Use case:** Invoke at the beginning of a new conversation to bootstrap the AI with your thread tree context.
 
-### `summarize-thread`
+#### `summarize-thread`
 
 Guide the AI to generate a structured summary for the current thread.
 
-**Arguments:** None
+**Arguments:**
 
-**Returns:** A user message with instructions for the AI to summarize the current discussion, covering:
-- Key decisions made
-- Technical choices and rationale
-- Current state / what's implemented
-- Open questions or next steps
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `topic` | `string` | No | Brief description of what was discussed |
 
-**Use case:** Invoke this after a productive discussion to generate a summary, then use `summary_update` to save it.
+**Returns:** Instructions for the AI to summarize the current discussion and save it via `summary_update`.
+
+### Quick-Action Prompts
+
+These prompts act as shortcuts — each one triggers the corresponding tool immediately.
+
+| Prompt | Shortcut for | Arguments |
+|--------|-------------|-----------|
+| `tm-help` | — | None |
+| `tm-context` | `context_get` | None |
+| `tm-tree` | `thread_list` | None |
+| `tm-create` | `thread_create` | `title` (required) |
+| `tm-switch` | `thread_switch` | `threadId` (required) |
+| `tm-summary` | `summary_update` | `content` (optional — auto-generates if omitted) |
+| `tm-stats` | `stats_show` | None |
+| `tm-init` | `threadmind_init` | None |
+
+In Claude Code, these appear as `/mcp__thread-mind__tm-help`, `/mcp__thread-mind__tm-create`, etc.
+
+### Text Shortcuts (`tm:` commands)
+
+After running `threadmind_init`, the generated `CLAUDE.md` teaches the AI to recognize short text commands typed directly in chat:
+
+```
+tm:help                → Show all commands
+tm:context             → context_get
+tm:tree                → thread_list
+tm:create Auth System  → thread_create(title: "Auth System")
+tm:switch auth-ui      → thread_switch(threadId: "auth-ui")
+tm:summary             → Auto-generate + save summary
+tm:summary <content>   → summary_update(content: ...)
+tm:stats               → stats_show
+tm:delete auth-api     → thread_delete(threadId: "auth-api")
+tm:init                → threadmind_init
+tm:project My App      → project_create(title: "My App")
+tm:projects            → project_list
+```
+
+These work in any AI client that reads `CLAUDE.md` or `.cursorrules`.
 
 ---
 

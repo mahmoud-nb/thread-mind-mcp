@@ -40,6 +40,34 @@ Project: "${projectTitle}"
 The assembled context from \`context_get\` REPLACES the need for conversation history. Write summaries as if a new developer will read them with no prior context — they should be self-contained and actionable.`;
 }
 
+/**
+ * Quick shortcuts section — shared across all clients.
+ * Maps short tm: commands to MCP tool calls.
+ */
+function shortcutsSection(): string {
+  return `
+### Quick Shortcuts
+
+The user can type these shortcuts in chat. When you see one, **immediately call the corresponding tool** without asking for confirmation:
+
+| User types | Action |
+|------------|--------|
+| \`tm:help\` | Show all available ThreadMind commands (list the table below) |
+| \`tm:context\` | Call \`context_get\` and display the result |
+| \`tm:tree\` | Call \`thread_list\` and display the tree |
+| \`tm:create <title>\` | Call \`thread_create\` with the given title |
+| \`tm:switch <id>\` | Call \`thread_switch\` with the given thread ID |
+| \`tm:summary\` | Generate a summary of the current discussion, then call \`summary_update\` |
+| \`tm:summary <content>\` | Call \`summary_update\` with the given content |
+| \`tm:delete <id>\` | Call \`thread_delete\` with the given thread ID |
+| \`tm:stats\` | Call \`stats_show\` and display token savings |
+| \`tm:init\` | Call \`threadmind_init\` to generate instruction files |
+| \`tm:project <title>\` | Call \`project_create\` with the given title |
+| \`tm:projects\` | Call \`project_list\` |
+
+**Important**: When you see \`tm:<command>\`, execute the tool call immediately. Do not ask "would you like me to..." — just do it.`;
+}
+
 function claudeInstructions(projectTitle: string): string {
   return `${coreInstructions(projectTitle)}
 
@@ -49,6 +77,8 @@ function claudeInstructions(projectTitle: string): string {
 - Use \`context_get\` output as your working context, not the chat history
 - When the user starts a new session, proactively call \`context_get\` before answering
 - After completing a task, proactively suggest updating the thread summary
+- MCP Prompts are available as slash commands: \`/mcp__thread-mind__tm-help\`, \`/mcp__thread-mind__tm-create\`, etc.
+${shortcutsSection()}
 `;
 }
 
@@ -60,6 +90,7 @@ function cursorInstructions(projectTitle: string): string {
 - ThreadMind tools are available via MCP server
 - Always call \`context_get\` at the start of a conversation to load project context
 - Summarize completed work using \`summary_update\` before ending a session
+${shortcutsSection()}
 `;
 }
 
@@ -73,6 +104,7 @@ function genericInstructions(projectTitle: string): string {
 - Call \`summary_update\` after meaningful discussions
 - Call \`thread_create\` when changing topics
 - Call \`thread_list\` to see the current thread tree
+${shortcutsSection()}
 `;
 }
 

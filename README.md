@@ -264,6 +264,35 @@ Generates instruction files that tell AI clients to automatically use ThreadMind
 |--------|-------------|
 | `start-thread` | Load and inject the assembled context at the start of a session |
 | `summarize-thread` | Guide the AI to generate a structured summary for the current thread |
+| `tm-help` | Show all available ThreadMind commands |
+| `tm-context` | Get assembled context (shortcut for `context_get`) |
+| `tm-tree` | Display thread tree (shortcut for `thread_list`) |
+| `tm-create` | Create a new thread (shortcut for `thread_create`) |
+| `tm-switch` | Switch to a thread (shortcut for `thread_switch`) |
+| `tm-summary` | Update or generate summary (shortcut for `summary_update`) |
+| `tm-stats` | Show token savings (shortcut for `stats_show`) |
+| `tm-init` | Generate instruction files (shortcut for `threadmind_init`) |
+
+In Claude Code, these appear as slash commands: `/mcp__thread-mind__tm-help`, `/mcp__thread-mind__tm-create`, etc.
+
+### Quick Shortcuts (via CLAUDE.md)
+
+After running `threadmind_init`, the generated `CLAUDE.md` enables short text commands you can type directly in chat:
+
+| Command | Action |
+|---------|--------|
+| `tm:help` | Show all available commands |
+| `tm:context` | Load assembled context |
+| `tm:tree` | Show thread tree |
+| `tm:create <title>` | Create a new thread |
+| `tm:switch <id>` | Switch to a thread |
+| `tm:summary` | Auto-generate and save a summary |
+| `tm:summary <content>` | Save specific summary content |
+| `tm:stats` | Show token savings statistics |
+| `tm:delete <id>` | Delete a thread |
+| `tm:init` | Generate instruction files |
+| `tm:project <title>` | Create a new project |
+| `tm:projects` | List all projects |
 
 ---
 
