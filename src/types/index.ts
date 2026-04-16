@@ -36,11 +36,35 @@ export interface TreeStructure {
   nodes: Record<string, TreeNode>;
 }
 
+export interface SummaryStats {
+  /** How many times summary_update was called on this thread */
+  updateCount: number;
+  /** Character length of the very first content written */
+  firstContentLength: number;
+  /** Character length of the current (latest) content */
+  currentContentLength: number;
+  /** Sum of all content lengths ever submitted (cumulative input) */
+  cumulativeInputLength: number;
+  /** ISO timestamp of last update */
+  lastUpdatedAt: string;
+}
+
+export interface ProjectStats {
+  projectId: string;
+  threads: Record<string, SummaryStats>;
+}
+
+export interface StatsService {
+  recordUpdate(projectId: string, threadId: string, newContent: string): Promise<void>;
+  getProjectStats(projectId: string): Promise<ProjectStats>;
+}
+
 export interface Services {
   storage: StorageService;
   project: ProjectService;
   thread: ThreadService;
   context: ContextService;
+  stats: StatsService;
 }
 
 // Service interfaces for dependency injection
@@ -58,6 +82,8 @@ export interface StorageService {
   readTree(projectId: string): Promise<TreeStructure>;
   writeTree(projectId: string, tree: TreeStructure): Promise<void>;
   deleteProjectDir(projectId: string): Promise<void>;
+  readProjectStats(projectId: string): Promise<ProjectStats>;
+  writeProjectStats(projectId: string, stats: ProjectStats): Promise<void>;
 }
 
 export interface ProjectService {

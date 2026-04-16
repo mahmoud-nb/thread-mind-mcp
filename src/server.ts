@@ -3,6 +3,7 @@ import { StorageServiceImpl } from "./core/storage.js";
 import { ProjectServiceImpl } from "./core/project.js";
 import { ThreadServiceImpl } from "./core/thread.js";
 import { ContextServiceImpl } from "./core/context.js";
+import { StatsServiceImpl } from "./core/stats.js";
 import { registerTools } from "./tools/index.js";
 import { registerResources } from "./resources/index.js";
 import { registerPrompts } from "./prompts/index.js";
@@ -16,8 +17,9 @@ export function createServer(basePath?: string): {
   const project = new ProjectServiceImpl(storage);
   const thread = new ThreadServiceImpl(storage);
   const context = new ContextServiceImpl(storage);
+  const stats = new StatsServiceImpl(storage);
 
-  const services: Services = { storage, project, thread, context };
+  const services: Services = { storage, project, thread, context, stats };
 
   const server = new McpServer({
     name: "thread-mind",

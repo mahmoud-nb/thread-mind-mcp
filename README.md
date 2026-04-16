@@ -239,6 +239,14 @@ Generates instruction files that tell AI clients to automatically use ThreadMind
 | Cursor | `.cursorrules` | Read automatically by Cursor |
 | Generic | `.threadmind/instructions.md` | Copy-paste into any client's custom instructions |
 
+### Statistics
+
+| Tool | Description |
+|------|-------------|
+| `stats_show` | Show token savings statistics (compression ratio, per-thread breakdown) |
+
+`stats_show` tracks every `summary_update` call and computes estimated token savings by comparing cumulative input against the current assembled context.
+
 ---
 
 ## Available Resources
@@ -465,8 +473,9 @@ src/
     thread.ts           # Thread CRUD, tree operations, ASCII rendering
     context.ts          # Context assembly + token estimation
     instructions.ts     # Multi-client instruction file generator
+    stats.ts            # Token savings tracking and statistics
   tools/
-    index.ts            # 10 MCP tool registrations with Zod schemas
+    index.ts            # 11 MCP tool registrations with Zod schemas
   resources/
     index.ts            # 2 MCP resource registrations
   prompts/

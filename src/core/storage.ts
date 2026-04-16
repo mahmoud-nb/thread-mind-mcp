@@ -5,6 +5,7 @@ import { parseFrontmatter, serializeFrontmatter } from "./frontmatter.js";
 import type {
   AppState,
   ProjectConfig,
+  ProjectStats,
   ThreadNode,
   TreeStructure,
   StorageService,
@@ -28,6 +29,7 @@ export class StorageServiceImpl implements StorageService {
     await mkdir(join(this.basePath, "projects"), { recursive: true });
     await mkdir(join(this.basePath, "threads"), { recursive: true });
     await mkdir(join(this.basePath, "trees"), { recursive: true });
+    await mkdir(join(this.basePath, "stats"), { recursive: true });
 
     // Create .gitignore to exclude config.json (per-user state)
     const gitignorePath = join(this.basePath, ".gitignore");
@@ -158,6 +160,30 @@ export class StorageServiceImpl implements StorageService {
     );
   }
 
+  // --- Stats ---
+
+  async readProjectStats(projectId: string): Promise<ProjectStats> {
+    try {
+      const raw = await readFile(
+        join(this.basePath, "stats", `${projectId}.json`),
+        "utf-8"
+      );
+      return JSON.parse(raw) as ProjectStats;
+    } catch {
+      return { projectId, threads: {} };
+    }
+  }
+
+  async writeProjectStats(
+    projectId: string,
+    stats: ProjectStats
+  ): Promise<void> {
+    await this.atomicWrite(
+      join(this.basePath, "stats", `${projectId}.json`),
+      JSON.stringify(stats, null, 2)
+    );
+  }
+
   // --- Cleanup ---
 
   async deleteProjectDir(projectId: string): Promise<void> {
@@ -168,6 +194,11 @@ export class StorageServiceImpl implements StorageService {
       });
     } catch {
       // Directory may not exist
+    }
+    try {
+      await unlink(join(this.basePath, "stats", `${projectId}.json`));
+    } catch {
+      // Stats file may not exist
     }
   }
 

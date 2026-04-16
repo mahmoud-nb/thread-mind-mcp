@@ -1,6 +1,6 @@
 # Tools Reference
 
-ThreadMind exposes 10 MCP tools. All tools return structured text responses and use `isError: true` on failure.
+ThreadMind exposes 11 MCP tools. All tools return structured text responses and use `isError: true` on failure.
 
 ## Project Tools
 
@@ -240,6 +240,50 @@ Guide the AI to generate a structured summary for the current thread.
 - Open questions or next steps
 
 **Use case:** Invoke this after a productive discussion to generate a summary, then use `summary_update` to save it.
+
+---
+
+## Statistics Tools
+
+### `stats_show`
+
+Show token savings statistics for the active ThreadMind project.
+
+**Parameters:** None
+
+**Returns:** A formatted report showing:
+- Overview: thread count, summary updates, current context size
+- Token savings: estimated raw history vs ThreadMind context, compression ratio
+- Per-thread breakdown: updates, current tokens, cumulative input, ratio
+
+**Example output:**
+```
+ThreadMind Stats: "My Project"
+
+Overview:
+  Threads: 5 (3 with tracked updates)
+  Summary updates: 12
+  Current context: ~450 tokens (depth: 3)
+
+Token Savings (estimated):
+  Estimated raw history: ~12,000 tokens
+  ThreadMind context:    ~450 tokens
+  Reduction:             ~96%
+
+Per-Thread Breakdown:
+  Thread               Updates  Current   Cumulative    Ratio
+  main                 4        ~120      ~3400         96%
+  auth-system          3        ~90       ~2800         97%
+
+Method: Cumulative summary input vs current context size.
+Token estimates use ~3.5 chars/token approximation.
+```
+
+**How it works:** Every call to `summary_update` is tracked. The cumulative input represents the total text compressed into summaries over time. The ratio compares this cumulative input against the current assembled context — showing how much information ThreadMind compresses.
+
+::: info
+Token estimates are approximations (~3.5 chars/token). The MCP protocol does not provide access to actual model token consumption. All metrics are derived from text ThreadMind stores and serves.
+:::
 
 ---
 

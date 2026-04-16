@@ -1,6 +1,6 @@
 # Référence des outils
 
-ThreadMind expose 10 outils MCP. Tous retournent des réponses textuelles structurées et utilisent `isError: true` en cas d'échec.
+ThreadMind expose 11 outils MCP. Tous retournent des réponses textuelles structurées et utilisent `isError: true` en cas d'échec.
 
 ## Outils de projet
 
@@ -230,6 +230,50 @@ Guide l'IA pour générer un résumé structuré du thread courant.
 - Les questions ouvertes ou prochaines étapes
 
 **Cas d'usage :** Invoquez ce prompt après une discussion productive pour générer un résumé, puis utilisez `summary_update` pour le sauvegarder.
+
+---
+
+## Outils de statistiques
+
+### `stats_show`
+
+Affiche les statistiques d'économie de tokens pour le projet ThreadMind actif.
+
+**Paramètres :** Aucun
+
+**Retourne :** Un rapport formaté contenant :
+- Vue d'ensemble : nombre de threads, mises à jour de résumés, taille du contexte actuel
+- Économies de tokens : historique brut estimé vs contexte ThreadMind, ratio de compression
+- Détail par thread : mises à jour, tokens actuels, input cumulé, ratio
+
+**Exemple de sortie :**
+```
+ThreadMind Stats: "Mon Projet"
+
+Overview:
+  Threads: 5 (3 with tracked updates)
+  Summary updates: 12
+  Current context: ~450 tokens (depth: 3)
+
+Token Savings (estimated):
+  Estimated raw history: ~12,000 tokens
+  ThreadMind context:    ~450 tokens
+  Reduction:             ~96%
+
+Per-Thread Breakdown:
+  Thread               Updates  Current   Cumulative    Ratio
+  main                 4        ~120      ~3400         96%
+  auth-system          3        ~90       ~2800         97%
+
+Method: Cumulative summary input vs current context size.
+Token estimates use ~3.5 chars/token approximation.
+```
+
+**Fonctionnement :** Chaque appel à `summary_update` est tracké. L'input cumulé représente le texte total compressé en résumés au fil du temps. Le ratio compare cet input cumulé au contexte assemblé actuel — montrant la compression réalisée par ThreadMind.
+
+::: info
+Les estimations de tokens sont approximatives (~3,5 caractères/token). Le protocole MCP ne permet pas d'accéder à la consommation réelle de tokens du modèle. Toutes les métriques sont dérivées du texte que ThreadMind stocke et sert.
+:::
 
 ---
 
