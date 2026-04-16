@@ -12,6 +12,9 @@ hero:
     - theme: alt
       text: View on GitHub
       link: https://github.com/mahmoud-nb/thread-mind-mcp
+    - theme: alt
+      text: npm
+      link: https://www.npmjs.com/package/thread-mind-mcp
 
 features:
   - icon: "\U0001F333"

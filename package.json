@@ -53,7 +53,7 @@
   "bugs": {
     "url": "https://github.com/mahmoud-nb/thread-mind-mcp/issues"
   },
-  "homepage": "https://github.com/mahmoud-nb/thread-mind-mcp#readme",
+  "homepage": "https://mahmoud-nb.github.io/thread-mind-mcp/",
   "engines": {
     "node": ">=18.0.0"
   },

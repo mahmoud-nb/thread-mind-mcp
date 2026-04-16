@@ -1,8 +1,13 @@
 # ThreadMind MCP
 
+[![npm version](https://img.shields.io/npm/v/thread-mind-mcp.svg)](https://www.npmjs.com/package/thread-mind-mcp)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 **Organize your AI conversations into thread trees. Think less tokens, think more.**
 
 ThreadMind is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that structures AI conversations into hierarchical threads. Instead of feeding entire conversation histories to your AI model, ThreadMind lets you maintain concise summaries organized in a tree — drastically reducing token consumption while preserving full context.
+
+> **[Documentation](https://mahmoud-nb.github.io/thread-mind-mcp/)** | **[npm](https://www.npmjs.com/package/thread-mind-mcp)** | **[GitHub](https://github.com/mahmoud-nb/thread-mind-mcp)**
 
 ---
 
