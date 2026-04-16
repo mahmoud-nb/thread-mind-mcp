@@ -1,6 +1,6 @@
 # Tools Reference
 
-ThreadMind exposes 9 MCP tools. All tools return structured text responses and use `isError: true` on failure.
+ThreadMind exposes 10 MCP tools. All tools return structured text responses and use `isError: true` on failure.
 
 ## Project Tools
 
@@ -166,15 +166,80 @@ Get the full assembled context for the active thread.
 
 **Parameters:** None
 
-**Returns:** The assembled context string — system context + ancestor summaries from root to active thread.
+**Returns:** The assembled context string — system context + ancestor summaries from root to active thread, with a token estimation footer:
+
+```
+ThreadMind context: ~450 tokens | depth: 3 threads
+```
 
 **Algorithm:**
 1. Walk from active thread to root via `parentId`
 2. Reverse the chain (root → active)
 3. Concatenate system context + summaries
 4. Skip threads with empty content
+5. Estimate token count (~1 token per 3.5 characters)
 
 See [Context Assembly](/guide/context-assembly) for details.
+
+---
+
+## Setup Tools
+
+### `threadmind_init`
+
+Generate instruction files for AI clients to enable semi-automatic ThreadMind usage.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `clients` | `string[]` | No | Clients to generate for: `"claude"`, `"cursor"`, `"generic"` (default: all) |
+
+**Returns:** Confirmation listing generated files.
+
+**Generated files:**
+
+| Client | File | Behavior |
+|--------|------|----------|
+| Claude Code | `CLAUDE.md` | Read automatically at every session start |
+| Cursor | `.cursorrules` | Read automatically by Cursor |
+| Generic | `.threadmind/instructions.md` | Copy-paste into any client's custom instructions |
+
+The generated instructions tell the AI to:
+- Call `context_get` at the start of every session
+- Call `summary_update` after each significant discussion
+- Use `thread_create` when the topic changes
+- Use `thread_list` to visualize the current state
+
+---
+
+## MCP Prompts
+
+ThreadMind also provides 2 MCP Prompts — structured templates that clients can invoke.
+
+### `start-thread`
+
+Load and inject the assembled context at the start of a session.
+
+**Arguments:** None
+
+**Returns:** A user message containing the full assembled context with token estimation.
+
+**Use case:** Invoke this prompt at the beginning of a new conversation to bootstrap the AI with your thread tree context.
+
+### `summarize-thread`
+
+Guide the AI to generate a structured summary for the current thread.
+
+**Arguments:** None
+
+**Returns:** A user message with instructions for the AI to summarize the current discussion, covering:
+- Key decisions made
+- Technical choices and rationale
+- Current state / what's implemented
+- Open questions or next steps
+
+**Use case:** Invoke this after a productive discussion to generate a summary, then use `summary_update` to save it.
 
 ---
 

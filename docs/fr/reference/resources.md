@@ -1,6 +1,6 @@
-# R\u00e9f\u00e9rence des ressources
+# Référence des ressources
 
-ThreadMind expose 2 ressources MCP. Les ressources fournissent des donn\u00e9es en lecture seule que les clients MCP peuvent afficher ou injecter.
+ThreadMind expose 2 ressources MCP. Les ressources fournissent des données en lecture seule que les clients MCP peuvent afficher ou injecter.
 
 ## `threadmind://context`
 
@@ -8,28 +8,28 @@ ThreadMind expose 2 ressources MCP. Les ressources fournissent des donn\u00e9es 
 
 **Type MIME :** `text/markdown`
 
-**Description :** Le contexte assembl\u00e9 pour le thread actif, identique \u00e0 la sortie de l'outil `context_get`.
+**Description :** Le contexte assemblé pour le thread actif, identique à la sortie de l'outil `context_get`.
 
-### Format de r\u00e9ponse
+### Format de réponse
 
-Retourne un document Markdown avec des sections s\u00e9par\u00e9es par `---` :
+Retourne un document Markdown avec des sections séparées par `---` :
 
 ```markdown
-## Contexte syst\u00e8me
+## Contexte système
 
-Votre prompt syst\u00e8me ici...
+Votre prompt système ici...
 
 ---
 
 ## Thread : Thread racine
 
-Contenu du r\u00e9sum\u00e9 racine...
+Contenu du résumé racine...
 
 ---
 
 ## Thread : Thread enfant (actif)
 
-R\u00e9sum\u00e9 du thread actif...
+Résumé du thread actif...
 ```
 
 ### Sans projet actif
@@ -44,7 +44,7 @@ No active project or thread. Use project_create first.
 Les clients MCP qui supportent les ressources peuvent :
 - Afficher le contenu dans un panneau
 - L'injecter automatiquement dans le contexte de conversation
-- S'abonner aux mises \u00e0 jour (ThreadMind envoie `notifications/resources/updated` apr\u00e8s chaque mutation)
+- S'abonner aux mises à jour (ThreadMind envoie `notifications/resources/updated` après chaque mutation)
 
 ---
 
@@ -56,16 +56,16 @@ Les clients MCP qui supportent les ressources peuvent :
 
 **Description :** Visualisation ASCII de l'arborescence des threads pour le projet actif.
 
-### Format de r\u00e9ponse
+### Format de réponse
 
 ```
 main
-\u251c\u2500\u2500 auth
-\u2502   \u251c\u2500\u2500 auth-ui \u2190 actif
-\u2502   \u2514\u2500\u2500 auth-api
-\u251c\u2500\u2500 database
-\u2502   \u2514\u2500\u2500 migrations
-\u2514\u2500\u2500 deploiement
+├── auth
+│   ├── auth-ui ← actif
+│   └── auth-api
+├── database
+│   └── migrations
+└── deploiement
 ```
 
 ### Sans projet actif
@@ -77,8 +77,8 @@ No active project. Use project_create first.
 
 ---
 
-## Mises \u00e0 jour des ressources
+## Mises à jour des ressources
 
-Les deux ressources refl\u00e8tent l'**\u00e9tat actuel** au moment de la lecture. Apr\u00e8s tout outil de mutation (`project_create`, `thread_create`, `thread_switch`, `summary_update`, `thread_delete`), le contenu des ressources change.
+Les deux ressources reflètent l'**état actuel** au moment de la lecture. Après tout outil de mutation (`project_create`, `thread_create`, `thread_switch`, `summary_update`, `thread_delete`), le contenu des ressources change.
 
-Les clients MCP qui s'abonnent aux notifications de ressources seront inform\u00e9s automatiquement des mises \u00e0 jour.
+Les clients MCP qui s'abonnent aux notifications de ressources seront informés automatiquement des mises à jour.

@@ -3,40 +3,40 @@ layout: home
 
 hero:
   name: ThreadMind MCP
-  text: Moins de tokens, plus de r\u00e9flexion.
-  tagline: "Organisez vos conversations IA en arborescences de threads. R\u00e9duisez la consommation de tokens en rempla\u00e7ant l\u2019historique complet par des r\u00e9sum\u00e9s structur\u00e9s."
+  text: Moins de tokens, plus de réflexion.
+  tagline: "Organisez vos conversations IA en arborescences de threads. Réduisez la consommation de tokens en remplaçant l'historique complet par des résumés structurés."
   actions:
     - theme: brand
-      text: "D\u00e9marrage rapide"
+      text: "Démarrage rapide"
       link: /fr/guide/getting-started
     - theme: alt
       text: Voir sur GitHub
       link: https://github.com/mahmoud-nb/thread-mind-mcp
 
 features:
-  - icon: "\U0001F333"
+  - icon: "🌳"
     title: Arborescences de threads
-    details: "Structurez vos conversations IA sous forme d\u2019arbre. Chaque thread h\u00e9rite du contexte de ses anc\u00EAtres \u2014 fini l\u2019historique dupliqu\u00e9."
-  - icon: "\u26A1"
+    details: "Structurez vos conversations IA sous forme d'arbre. Chaque thread hérite du contexte de ses ancêtres — fini l'historique dupliqué."
+  - icon: "⚡"
     title: Optimisation des tokens
-    details: "Envoyez uniquement des r\u00e9sum\u00e9s concis au lieu de l\u2019historique complet. R\u00e9duisez l\u2019utilisation de tokens de 80%+ sur les longues sessions."
-  - icon: "\U0001F500"
+    details: "Envoyez uniquement des résumés concis au lieu de l'historique complet. Réduisez l'utilisation de tokens de 80%+ sur les longues sessions."
+  - icon: "🔀"
     title: Brancher et explorer
-    details: "Explorez diff\u00e9rentes pistes de raisonnement dans des threads s\u00e9par\u00e9s. Basculez entre les branches sans perdre le contexte."
-  - icon: "\U0001F465"
-    title: Collaboration en \u00e9quipe
-    details: "Partagez les arborescences via git. Cr\u00e9ez des branches \u00e0 partir des threads de vos coll\u00e8gues. Chacun g\u00e8re ses propres r\u00e9sum\u00e9s."
-  - icon: "\U0001F4C1"
+    details: "Explorez différentes pistes de raisonnement dans des threads séparés. Basculez entre les branches sans perdre le contexte."
+  - icon: "👥"
+    title: Collaboration en équipe
+    details: "Partagez les arborescences via git. Créez des branches à partir des threads de vos collègues. Chacun gère ses propres résumés."
+  - icon: "📁"
     title: Stockage fichier
-    details: "Tout est stock\u00e9 en Markdown et JSON lisibles dans un dossier .threadmind/. Pas de base de donn\u00e9es, 100% compatible git."
-  - icon: "\U0001F50C"
+    details: "Tout est stocké en Markdown et JSON lisibles dans un dossier .threadmind/. Pas de base de données, 100% compatible git."
+  - icon: "🔌"
     title: Standard MCP
-    details: "Compatible avec tout client IA MCP \u2014 Claude Code, ChatGPT, Gemini, etc. Installation en une seule commande npx."
+    details: "Compatible avec tout client IA MCP — Claude Code, ChatGPT, Gemini, etc. Installation en une seule commande npx."
 ---
 
 ## Installation rapide
 
-Ajoutez ThreadMind \u00e0 votre client IA en quelques secondes :
+Ajoutez ThreadMind à votre client IA en quelques secondes :
 
 ```json
 {
@@ -49,17 +49,17 @@ Ajoutez ThreadMind \u00e0 votre client IA en quelques secondes :
 }
 ```
 
-Puis commencez \u00e0 organiser :
+Puis commencez à organiser :
 
 ```
-Vous : Cr\u00e9e un projet appel\u00e9 "Mon App"
-IA :   \u2713 Projet "mon-app" cr\u00e9\u00e9. Thread principal actif.
+Vous : Crée un projet appelé "Mon App"
+IA :   ✓ Projet "mon-app" créé. Thread principal actif.
 
-Vous : Cr\u00e9e un thread pour "Authentification"
-IA :   \u2713 Thread "authentification" cr\u00e9\u00e9 sous "main".
+Vous : Crée un thread pour "Authentification"
+IA :   ✓ Thread "authentification" créé sous "main".
 
        main
-       \u2514\u2500\u2500 authentification \u2190 actif
+       └── authentification ← actif
 ```
 
 <style>

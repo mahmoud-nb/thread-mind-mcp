@@ -491,10 +491,6 @@ src/
 - **Node.js** >= 18.0.0
 - **Git** (optional, for team mode author detection and collaboration)
 
-## Author
-
-**Mahmoud NBET** — [mahmoud.nb@gmail.com](mailto:mahmoud.nb@gmail.com)
-
 ## License
 
 [MIT](LICENSE)

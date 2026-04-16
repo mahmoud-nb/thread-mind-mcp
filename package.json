@@ -51,9 +51,9 @@
     "url": "https://github.com/mahmoud-nb/thread-mind-mcp"
   },
   "bugs": {
-    "url": ""
+    "url": "https://github.com/mahmoud-nb/thread-mind-mcp/issues"
   },
-  "homepage": "",
+  "homepage": "https://github.com/mahmoud-nb/thread-mind-mcp#readme",
   "engines": {
     "node": ">=18.0.0"
   },

@@ -1,29 +1,29 @@
-# R\u00e9f\u00e9rence des outils
+# Référence des outils
 
-ThreadMind expose 9 outils MCP. Tous retournent des r\u00e9ponses textuelles structur\u00e9es et utilisent `isError: true` en cas d'\u00e9chec.
+ThreadMind expose 10 outils MCP. Tous retournent des réponses textuelles structurées et utilisent `isError: true` en cas d'échec.
 
 ## Outils de projet
 
 ### `project_create`
 
-Cr\u00e9e un nouveau projet ThreadMind avec un thread racine `main`.
+Crée un nouveau projet ThreadMind avec un thread racine `main`.
 
-**Param\u00e8tres :**
+**Paramètres :**
 
 | Nom | Type | Requis | Description |
 |-----|------|--------|-------------|
-| `title` | `string` | Oui | Titre du projet (utilis\u00e9 pour g\u00e9n\u00e9rer l'ID slug) |
-| `systemContext` | `string` | Non | Prompt syst\u00e8me global inclus dans chaque assemblage |
-| `mode` | `"solo"` \| `"team"` | Non | Mode de collaboration (d\u00e9faut : `"solo"`) |
+| `title` | `string` | Oui | Titre du projet (utilisé pour générer l'ID slug) |
+| `systemContext` | `string` | Non | Prompt système global inclus dans chaque assemblage |
+| `mode` | `"solo"` \| `"team"` | Non | Mode de collaboration (défaut : `"solo"`) |
 
 **Retourne :** Confirmation avec l'ID du projet et le mode.
 
 **Effets secondaires :**
-- Cr\u00e9e le fichier de configuration du projet
-- Cr\u00e9e le thread `main`
+- Crée le fichier de configuration du projet
+- Crée le thread `main`
 - Initialise l'arborescence
-- G\u00e9n\u00e8re l'ID auteur (si premier projet)
-- D\u00e9finit comme projet actif
+- Génère l'ID auteur (si premier projet)
+- Définit comme projet actif
 
 ---
 
@@ -31,13 +31,13 @@ Cr\u00e9e un nouveau projet ThreadMind avec un thread racine `main`.
 
 Liste tous les projets ThreadMind.
 
-**Param\u00e8tres :** Aucun
+**Paramètres :** Aucun
 
-**Retourne :** Liste format\u00e9e avec titre, ID, mode et marqueur actif.
+**Retourne :** Liste formatée avec titre, ID, mode et marqueur actif.
 
 **Exemple de sortie :**
 ```
-- Mon App (mon-app) [solo] \u2190 actif
+- Mon App (mon-app) [solo] ← actif
 - Projet Perso (projet-perso) [team]
 ```
 
@@ -47,7 +47,7 @@ Liste tous les projets ThreadMind.
 
 Bascule vers un autre projet.
 
-**Param\u00e8tres :**
+**Paramètres :**
 
 | Nom | Type | Requis | Description |
 |-----|------|--------|-------------|
@@ -56,8 +56,8 @@ Bascule vers un autre projet.
 **Retourne :** Message de confirmation.
 
 **Effets secondaires :**
-- Met \u00e0 jour le projet actif
-- R\u00e9initialise le thread actif \u00e0 `main`
+- Met à jour le projet actif
+- Réinitialise le thread actif à `main`
 
 ---
 
@@ -65,14 +65,14 @@ Bascule vers un autre projet.
 
 ### `thread_create`
 
-Cr\u00e9e un nouveau thread enfant \u00e0 partir d'un parent.
+Crée un nouveau thread enfant à partir d'un parent.
 
-**Param\u00e8tres :**
+**Paramètres :**
 
 | Nom | Type | Requis | Description |
 |-----|------|--------|-------------|
-| `title` | `string` | Oui | Titre du thread (utilis\u00e9 pour g\u00e9n\u00e9rer l'ID slug) |
-| `parentId` | `string` | Non | ID du thread parent (d\u00e9faut : thread actif) |
+| `title` | `string` | Oui | Titre du thread (utilisé pour générer l'ID slug) |
+| `parentId` | `string` | Non | ID du thread parent (défaut : thread actif) |
 
 **Retourne :** Confirmation avec l'ID du thread + visualisation de l'arbre.
 
@@ -82,13 +82,13 @@ Cr\u00e9e un nouveau thread enfant \u00e0 partir d'un parent.
 
 Bascule vers un autre thread.
 
-**Param\u00e8tres :**
+**Paramètres :**
 
 | Nom | Type | Requis | Description |
 |-----|------|--------|-------------|
 | `threadId` | `string` | Oui | ID du thread cible |
 
-**Retourne :** Confirmation + aper\u00e7u du contexte (300 premiers caract\u00e8res).
+**Retourne :** Confirmation + aperçu du contexte (300 premiers caractères).
 
 ---
 
@@ -96,17 +96,17 @@ Bascule vers un autre thread.
 
 Affiche l'arborescence du projet actif.
 
-**Param\u00e8tres :** Aucun
+**Paramètres :** Aucun
 
-**Retourne :** Visualisation ASCII de l'arbre avec le thread actif marqu\u00e9.
+**Retourne :** Visualisation ASCII de l'arbre avec le thread actif marqué.
 
 **Exemple de sortie :**
 ```
 main
-\u251c\u2500\u2500 auth
-\u2502   \u251c\u2500\u2500 auth-ui \u2190 actif
-\u2502   \u2514\u2500\u2500 auth-api
-\u2514\u2500\u2500 dashboard
+├── auth
+│   ├── auth-ui ← actif
+│   └── auth-api
+└── dashboard
 ```
 
 ---
@@ -115,62 +115,127 @@ main
 
 Supprime un thread et tous ses descendants.
 
-**Param\u00e8tres :**
+**Paramètres :**
 
 | Nom | Type | Requis | Description |
 |-----|------|--------|-------------|
-| `threadId` | `string` | Oui | ID du thread \u00e0 supprimer |
+| `threadId` | `string` | Oui | ID du thread à supprimer |
 
-**Retourne :** Confirmation + arborescence mise \u00e0 jour.
+**Retourne :** Confirmation + arborescence mise à jour.
 
 **Contraintes :**
 - Impossible de supprimer le thread `main`
-- En mode \u00e9quipe, seul l'auteur peut supprimer ses threads
+- En mode équipe, seul l'auteur peut supprimer ses threads
 - Cascade vers tous les descendants
 
 ---
 
-## Outils de r\u00e9sum\u00e9 et contexte
+## Outils de résumé et contexte
 
 ### `summary_update`
 
-Met \u00e0 jour le r\u00e9sum\u00e9 d'un thread.
+Met à jour le résumé d'un thread.
 
-**Param\u00e8tres :**
+**Paramètres :**
 
 | Nom | Type | Requis | Description |
 |-----|------|--------|-------------|
-| `content` | `string` | Oui | Nouveau contenu du r\u00e9sum\u00e9 (markdown) |
-| `threadId` | `string` | Non | Thread \u00e0 mettre \u00e0 jour (d\u00e9faut : thread actif) |
+| `content` | `string` | Oui | Nouveau contenu du résumé (markdown) |
+| `threadId` | `string` | Non | Thread à mettre à jour (défaut : thread actif) |
 
 **Retourne :** Confirmation avec l'ID du thread.
 
 **Contraintes :**
-- En mode \u00e9quipe, seul l'auteur peut modifier ses threads
+- En mode équipe, seul l'auteur peut modifier ses threads
 
 ---
 
 ### `context_get`
 
-R\u00e9cup\u00e8re le contexte assembl\u00e9 complet pour le thread actif.
+Récupère le contexte assemblé complet pour le thread actif.
 
-**Param\u00e8tres :** Aucun
+**Paramètres :** Aucun
 
-**Retourne :** Le contexte assembl\u00e9 \u2014 contexte syst\u00e8me + r\u00e9sum\u00e9s des anc\u00eatres de la racine au thread actif.
+**Retourne :** Le contexte assemblé — contexte système + résumés des ancêtres de la racine au thread actif, avec un pied de page d'estimation de tokens :
+
+```
+ThreadMind context: ~450 tokens | depth: 3 threads
+```
 
 **Algorithme :**
-1. Remonter du thread actif \u00e0 la racine via `parentId`
-2. Inverser la cha\u00eene (racine \u2192 actif)
-3. Concat\u00e9ner contexte syst\u00e8me + r\u00e9sum\u00e9s
+1. Remonter du thread actif à la racine via `parentId`
+2. Inverser la chaîne (racine → actif)
+3. Concaténer contexte système + résumés
 4. Ignorer les threads au contenu vide
+5. Estimer le nombre de tokens (~1 token pour 3,5 caractères)
 
-Voir [Assemblage du contexte](/fr/guide/context-assembly) pour les d\u00e9tails.
+Voir [Assemblage du contexte](/fr/guide/context-assembly) pour les détails.
+
+---
+
+## Outils de configuration
+
+### `threadmind_init`
+
+Génère des fichiers d'instructions pour les clients IA afin d'activer l'utilisation semi-automatique de ThreadMind.
+
+**Paramètres :**
+
+| Nom | Type | Requis | Description |
+|-----|------|--------|-------------|
+| `clients` | `string[]` | Non | Clients cibles : `"claude"`, `"cursor"`, `"generic"` (défaut : tous) |
+
+**Retourne :** Confirmation avec la liste des fichiers générés.
+
+**Fichiers générés :**
+
+| Client | Fichier | Comportement |
+|--------|---------|--------------|
+| Claude Code | `CLAUDE.md` | Lu automatiquement à chaque démarrage de session |
+| Cursor | `.cursorrules` | Lu automatiquement par Cursor |
+| Générique | `.threadmind/instructions.md` | À copier-coller dans les instructions personnalisées de n'importe quel client |
+
+Les instructions générées demandent à l'IA de :
+- Appeler `context_get` au début de chaque session
+- Appeler `summary_update` après chaque discussion significative
+- Utiliser `thread_create` quand le sujet change
+- Utiliser `thread_list` pour visualiser l'état actuel
+
+---
+
+## Prompts MCP
+
+ThreadMind fournit également 2 Prompts MCP — des templates structurés que les clients peuvent invoquer.
+
+### `start-thread`
+
+Charge et injecte le contexte assemblé au début d'une session.
+
+**Arguments :** Aucun
+
+**Retourne :** Un message utilisateur contenant le contexte assemblé complet avec estimation des tokens.
+
+**Cas d'usage :** Invoquez ce prompt au début d'une nouvelle conversation pour initialiser l'IA avec le contexte de votre arbre de threads.
+
+### `summarize-thread`
+
+Guide l'IA pour générer un résumé structuré du thread courant.
+
+**Arguments :** Aucun
+
+**Retourne :** Un message utilisateur avec des instructions pour que l'IA résume la discussion en cours, couvrant :
+- Les décisions clés prises
+- Les choix techniques et leur justification
+- L'état actuel / ce qui est implémenté
+- Les questions ouvertes ou prochaines étapes
+
+**Cas d'usage :** Invoquez ce prompt après une discussion productive pour générer un résumé, puis utilisez `summary_update` pour le sauvegarder.
 
 ---
 
 ## Gestion des erreurs
 
-Tous les outils suivent le m\u00eame sch\u00e9ma d'erreur :
+Tous les outils suivent le même schéma d'erreur :
 
 ```json
 {
@@ -180,8 +245,8 @@ Tous les outils suivent le m\u00eame sch\u00e9ma d'erreur :
 ```
 
 Erreurs courantes :
-- `"No active project. Use project_create first."` \u2014 aucun projet s\u00e9lectionn\u00e9
-- `"Thread \"x\" not found"` \u2014 ID de thread invalide
-- `"Parent thread \"x\" not found"` \u2014 parent invalide lors de la cr\u00e9ation
-- `"Cannot delete the main thread"` \u2014 tentative de suppression de la racine
-- `"Cannot update thread \"x\": owned by \"y\""` \u2014 violation de propri\u00e9t\u00e9 en mode \u00e9quipe
+- `"No active project. Use project_create first."` — aucun projet sélectionné
+- `"Thread \"x\" not found"` — ID de thread invalide
+- `"Parent thread \"x\" not found"` — parent invalide lors de la création
+- `"Cannot delete the main thread"` — tentative de suppression de la racine
+- `"Cannot update thread \"x\": owned by \"y\""` — violation de propriété en mode équipe

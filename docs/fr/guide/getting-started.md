@@ -1,14 +1,14 @@
-# D\u00e9marrage rapide
+# Démarrage rapide
 
-## Pr\u00e9requis
+## Prérequis
 
-- **Node.js** 18 ou sup\u00e9rieur
+- **Node.js** 18 ou supérieur
 - Un **client IA compatible MCP** (Claude Code ou tout client supportant MCP)
-- **Git** (optionnel, requis pour le mode \u00e9quipe)
+- **Git** (optionnel, requis pour le mode équipe)
 
 ## Installation
 
-ThreadMind ne n\u00e9cessite aucune installation globale. Il s'ex\u00e9cute via `npx` :
+ThreadMind ne nécessite aucune installation globale. Il s'exécute via `npx` :
 
 ```bash
 npx thread-mind-mcp
@@ -18,7 +18,7 @@ npx thread-mind-mcp
 
 ### Claude Code
 
-Ajoutez la configuration suivante dans votre fichier de param\u00e8tres MCP :
+Ajoutez la configuration suivante dans votre fichier de paramètres MCP :
 
 **Globale** (`~/.claude/settings.json`) :
 ```json
@@ -32,7 +32,7 @@ Ajoutez la configuration suivante dans votre fichier de param\u00e8tres MCP :
 }
 ```
 
-**Par projet** (`.claude/settings.json` dans votre d\u00e9p\u00f4t) :
+**Par projet** (`.claude/settings.json` dans votre dépôt) :
 ```json
 {
   "mcpServers": {
@@ -46,53 +46,53 @@ Ajoutez la configuration suivante dans votre fichier de param\u00e8tres MCP :
 
 ### Autres clients MCP
 
-Tout client supportant le transport stdio MCP peut utiliser ThreadMind avec le m\u00eame mod\u00e8le de configuration.
+Tout client supportant le transport stdio MCP peut utiliser ThreadMind avec le même modèle de configuration.
 
 ## Votre premier projet
 
-Une fois ThreadMind configur\u00e9, lancez une conversation avec votre IA et utilisez les outils :
+Une fois ThreadMind configuré, lancez une conversation avec votre IA et utilisez les outils :
 
-### 1. Cr\u00e9er un projet
+### 1. Créer un projet
 
 ```
-Vous : Cr\u00e9e un projet ThreadMind appel\u00e9 "Mon App Web" avec comme contexte syst\u00e8me
+Vous : Crée un projet ThreadMind appelé "Mon App Web" avec comme contexte système
        "Nous construisons une application e-commerce Next.js"
 
 IA :   [appelle project_create]
-       \u2713 Projet "mon-app-web" cr\u00e9\u00e9 (mode : solo). Thread principal actif.
+       ✓ Projet "mon-app-web" créé (mode : solo). Thread principal actif.
 ```
 
-### 2. Travailler et r\u00e9sumer
+### 2. Travailler et résumer
 
-Menez votre conversation normale sur le sujet, puis sauvegardez un r\u00e9sum\u00e9 :
+Menez votre conversation normale sur le sujet, puis sauvegardez un résumé :
 
 ```
 Vous : [discutez des approches d'authentification avec l'IA...]
-Vous : R\u00e9sume ce qu'on a d\u00e9cid\u00e9 dans le thread courant
+Vous : Résume ce qu'on a décidé dans le thread courant
 
 IA :   [appelle summary_update]
-       \u2713 R\u00e9sum\u00e9 mis \u00e0 jour pour le thread "main".
+       ✓ Résumé mis à jour pour le thread "main".
 ```
 
-### 3. Cr\u00e9er des sous-threads
+### 3. Créer des sous-threads
 
 ```
-Vous : Cr\u00e9e un thread pour "Routes API"
+Vous : Crée un thread pour "Routes API"
 
 IA :   [appelle thread_create]
-       \u2713 Thread "routes-api" cr\u00e9\u00e9 sous "main".
+       ✓ Thread "routes-api" créé sous "main".
 
        main
-       \u2514\u2500\u2500 routes-api \u2190 actif
+       └── routes-api ← actif
 ```
 
-### 4. Consulter le contexte assembl\u00e9
+### 4. Consulter le contexte assemblé
 
 ```
 Vous : Montre-moi le contexte ThreadMind actuel
 
 IA :   [appelle context_get]
-       ## Contexte syst\u00e8me
+       ## Contexte système
        Nous construisons une application e-commerce Next.js
 
        ---
@@ -103,7 +103,7 @@ IA :   [appelle context_get]
        ---
 
        ## Thread : Routes API (actif)
-       [vide \u2014 commencez \u00e0 discuter puis r\u00e9sumez]
+       [vide — commencez à discuter puis résumez]
 ```
 
 ### 5. Visualiser l'arborescence
@@ -113,25 +113,25 @@ Vous : Montre l'arborescence des threads
 
 IA :   [appelle thread_list]
        main
-       \u251c\u2500\u2500 routes-api \u2190 actif
-       \u2514\u2500\u2500 schema-bdd
+       ├── routes-api ← actif
+       └── schema-bdd
 ```
 
-## Workflow recommand\u00e9
+## Workflow recommandé
 
-1. **Cr\u00e9ez un projet** au d\u00e9but d'un nouveau codebase ou fonctionnalit\u00e9
-2. **Travaillez dans le thread principal** pour la planification initiale et les grandes d\u00e9cisions
-3. **Branchez** quand vous plongez dans un sous-sujet sp\u00e9cifique
-4. **R\u00e9sumez** apr\u00e8s chaque discussion significative \u2014 gardez les r\u00e9sum\u00e9s concis (5-15 lignes)
+1. **Créez un projet** au début d'un nouveau codebase ou fonctionnalité
+2. **Travaillez dans le thread principal** pour la planification initiale et les grandes décisions
+3. **Branchez** quand vous plongez dans un sous-sujet spécifique
+4. **Résumez** après chaque discussion significative — gardez les résumés concis (5-15 lignes)
 5. **Changez de thread** quand vous changez de sujet
-6. **Utilisez `context_get`** pour alimenter l'IA avec votre contexte structur\u00e9 plut\u00f4t que l'historique brut
+6. **Utilisez `context_get`** pour alimenter l'IA avec votre contexte structuré plutôt que l'historique brut
 
 ::: tip
-De bons r\u00e9sum\u00e9s sont la cl\u00e9 de l'efficacit\u00e9 de ThreadMind. Concentrez-vous sur les **d\u00e9cisions, r\u00e9sultats et choix techniques cl\u00e9s** \u2014 pas sur la conversation elle-m\u00eame.
+De bons résumés sont la clé de l'efficacité de ThreadMind. Concentrez-vous sur les **décisions, résultats et choix techniques clés** — pas sur la conversation elle-même.
 :::
 
-## Prochaines \u00e9tapes
+## Prochaines étapes
 
-- [Projets](/fr/guide/projects) \u2014 gestion des projets en d\u00e9tail
-- [Threads](/fr/guide/threads) \u2014 cr\u00e9ation et gestion des threads
-- [Assemblage du contexte](/fr/guide/context-assembly) \u2014 comment le contexte est construit
+- [Projets](/fr/guide/projects) — gestion des projets en détail
+- [Threads](/fr/guide/threads) — création et gestion des threads
+- [Assemblage du contexte](/fr/guide/context-assembly) — comment le contexte est construit
