@@ -4,12 +4,13 @@ L'assemblage du contexte est le mécanisme central de ThreadMind — il construi
 
 ## Fonctionnement
 
-Quand vous appelez `context_get` ou lisez la ressource `threadmind://context`, ThreadMind :
+Quand vous appelez `context_get` (ou `tm:context`) ou lisez la ressource `threadmind://context`, ThreadMind :
 
 1. **Part** du thread actif
 2. **Remonte** l'arbre en suivant les liens `parentId` jusqu'à la racine
 3. **Inverse** la chaîne (racine → ... → actif)
 4. **Concatène** le contexte système + tous les résumés dans l'ordre
+5. **Estime** le nombre de tokens (~1 token pour 3,5 caractères)
 
 ### Exemple
 
@@ -48,6 +49,10 @@ Auth JWT avec refresh tokens, bcrypt, Passport.js...
 
 Formulaire de login email/mot de passe, page d'inscription
 avec validation, flux mot de passe oublié...
+
+---
+_ThreadMind context: ~450 tokens | depth: 4 threads_
+_Estimated raw history: ~12,000 tokens (~96% reduction from 8 summary updates)_
 ```
 
 ### Ce qui est exclu
@@ -57,6 +62,45 @@ avec validation, flux mot de passe oublié...
 - **Les résumés vides** (les threads sans contenu sont ignorés)
 
 C'est intentionnel — seul le **contexte ancestral direct** compte pour le thread actuel.
+
+## Estimation des tokens
+
+Chaque réponse de `context_get` inclut un pied de page avec :
+- **Tokens du contexte ThreadMind** — nombre approximatif de tokens du contexte assemblé
+- **Historique brut estimé** — combien de tokens les inputs cumulatifs des résumés auraient coûté (affiché après au moins un `summary_update`)
+- **Pourcentage de réduction** — le ratio de compression
+
+L'estimation utilise ~3,5 caractères par token, ce qui est conservateur (légère surestimation).
+
+::: info
+Les estimations de tokens sont approximatives. Le protocole MCP ne permet pas d'accéder à la consommation réelle de tokens du modèle. Toutes les métriques sont dérivées du texte que ThreadMind stocke et sert.
+:::
+
+## Vérifier les économies de tokens
+
+Utilisez `stats_show` (ou `tm:stats`) pour obtenir un rapport détaillé :
+
+```
+ThreadMind Stats: "Mon Projet"
+
+Overview:
+  Threads: 5 (3 with tracked updates)
+  Summary updates: 12
+  Current context: ~450 tokens (depth: 3)
+
+Token Savings (estimated):
+  Estimated raw history: ~12,000 tokens
+  ThreadMind context:    ~450 tokens
+  Reduction:             ~96%
+
+Per-Thread Breakdown:
+  Thread               Updates  Current   Cumulative    Ratio
+  main                 4        ~120      ~3400         96%
+  auth-system          3        ~90       ~2800         97%
+  auth-ui              5        ~85       ~5800         99%
+```
+
+**Fonctionnement :** Chaque appel à `summary_update` est tracké. L'input cumulé représente le texte total compressé en résumés au fil du temps. Le ratio compare cet input cumulé au contexte assemblé actuel — montrant la compression réalisée par ThreadMind.
 
 ## Économies de tokens
 
@@ -76,6 +120,11 @@ Même avec des résumés généreux (500 tokens chacun), une chaîne de 5 niveau
 
 ```
 context_get
+```
+
+Ou avec le raccourci :
+```
+tm:context
 ```
 
 Retourne le contexte assemblé sous forme de texte. Utilisez-le pour injecter explicitement le contexte dans votre conversation.
@@ -132,5 +181,5 @@ La profondeur idéale d'un arbre est de **3-5 niveaux**. Des arbres plus profond
 
 ## Protections
 
-- **Détection de références circulaires** — si une chaîne de parents forme une boucle, ThreadMind lève une erreur
+- **Détection de références circulaires** — si une chaîne de parents forme une boucle (ne devrait jamais arriver), ThreadMind lève une erreur
 - **Limite de profondeur** — les chaînes sont plafonnées à 50 niveaux pour éviter une traversée infinie

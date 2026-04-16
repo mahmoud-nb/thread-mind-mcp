@@ -8,6 +8,8 @@ A **project** is ThreadMind's top-level workspace. It groups together a thread t
 project_create(title: "My App", systemContext: "...", mode: "solo")
 ```
 
+Or using the shortcut: `tm:project My App`
+
 This will:
 1. Generate a project ID from the title (`"My App"` → `"my-app"`)
 2. Create the project configuration file
@@ -32,11 +34,17 @@ The `systemContext` is a global instruction that appears at the top of every ass
 - Architecture overview ("Monorepo with Next.js frontend and Express backend")
 - Coding conventions ("Use functional components, no classes")
 
+::: tip
+After creating a project, run `tm:init` (or `threadmind_init`) to generate instruction files that teach your AI client to use ThreadMind automatically.
+:::
+
 ## Listing Projects
 
 ```
 project_list
 ```
+
+Or using the shortcut: `tm:projects`
 
 Returns all projects with their mode and highlights the active one:
 
@@ -80,6 +88,8 @@ Each project creates:
       ...                 # Other threads
   trees/
     my-app.json           # Tree structure
+  stats/
+    my-app.json           # Token savings statistics
 ```
 
 ## ID Generation

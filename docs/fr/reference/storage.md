@@ -15,6 +15,8 @@ ThreadMind utilise un stockage basé sur des fichiers dans un dossier `.threadmi
       {thread-id}.md      # Fichiers thread (frontmatter + résumé)
   trees/
     {project-id}.json     # Index de l'arborescence
+  stats/
+    {project-id}.json     # Statistiques d'économie de tokens
 ```
 
 ## Formats de fichiers
@@ -136,6 +138,50 @@ Index dénormalisé pour une traversée rapide de l'arbre :
 
 ::: info
 Le fichier d'arbre est un **index dénormalisé** — les mêmes relations parent-enfant existent dans le frontmatter de chaque thread. Si le fichier d'arbre est corrompu ou a des conflits de merge, il peut être regénéré depuis les fichiers de threads.
+:::
+
+---
+
+### `stats/{project-id}.json` (ProjectStats)
+
+Statistiques d'économie de tokens, mises à jour automatiquement à chaque appel `summary_update` :
+
+```json
+{
+  "projectId": "mon-app",
+  "threads": {
+    "main": {
+      "updateCount": 4,
+      "firstContentLength": 350,
+      "currentContentLength": 280,
+      "cumulativeInputLength": 1420,
+      "lastUpdatedAt": "2026-04-15T14:30:00Z"
+    },
+    "systeme-auth": {
+      "updateCount": 3,
+      "firstContentLength": 200,
+      "currentContentLength": 310,
+      "cumulativeInputLength": 890,
+      "lastUpdatedAt": "2026-04-15T16:00:00Z"
+    }
+  }
+}
+```
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `projectId` | `string` | Projet auquel ce fichier de stats appartient |
+| `threads` | `Record<string, SummaryStats>` | Statistiques par thread |
+| `threads[id].updateCount` | `number` | Nombre d'appels à `summary_update` |
+| `threads[id].firstContentLength` | `number` | Longueur en caractères du tout premier résumé |
+| `threads[id].currentContentLength` | `number` | Longueur en caractères du dernier résumé |
+| `threads[id].cumulativeInputLength` | `number` | Somme de toutes les longueurs de contenu soumises |
+| `threads[id].lastUpdatedAt` | `string` | Horodatage ISO 8601 de la dernière mise à jour |
+
+La métrique clé est le ratio entre `cumulativeInputLength` (texte total compressé) et `currentContentLength` (taille du résumé actuel). Cela mesure la quantité d'information que ThreadMind compresse au fil du temps.
+
+::: tip
+Les fichiers de stats sont purement informatifs. S'ils sont supprimés, ils se reconstruisent naturellement au fur et à mesure des appels à `summary_update`. Aucune donnée n'est perdue — seul le suivi historique est réinitialisé.
 :::
 
 ---

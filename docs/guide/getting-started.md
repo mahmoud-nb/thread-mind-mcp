@@ -62,22 +62,37 @@ AI:  [calls project_create]
      ✓ Project "my-web-app" created (mode: solo). Main thread active.
 ```
 
-### 2. Work on a topic and summarize
+### 2. Generate instruction files
+
+```
+You: tm:init
+
+AI:  [calls threadmind_init]
+     ✓ Generated CLAUDE.md, .cursorrules, instructions.md
+```
+
+This generates instruction files that teach your AI client to use ThreadMind automatically — including `tm:` shortcuts you can type in chat.
+
+::: tip
+Always run `tm:init` (or `threadmind_init`) right after creating a project. The generated `CLAUDE.md` file tells Claude Code to proactively use ThreadMind at every session start.
+:::
+
+### 3. Work on a topic and summarize
 
 Have your normal conversation about the topic, then save a summary:
 
 ```
 You: [discuss authentication approaches with AI...]
-You: Summarize what we decided into the current thread
+You: tm:summary
 
-AI:  [calls summary_update]
+AI:  [generates summary, then calls summary_update]
      ✓ Summary updated for thread "main".
 ```
 
-### 3. Branch into sub-topics
+### 4. Branch into sub-topics
 
 ```
-You: Create a thread called "API Routes"
+You: tm:create API Routes
 
 AI:  [calls thread_create]
      ✓ Thread "api-routes" created under "main".
@@ -86,10 +101,10 @@ AI:  [calls thread_create]
      └── api-routes ← active
 ```
 
-### 4. Check the assembled context
+### 5. Check the assembled context
 
 ```
-You: Show me the current ThreadMind context
+You: tm:context
 
 AI:  [calls context_get]
      ## System Context
@@ -104,12 +119,16 @@ AI:  [calls context_get]
 
      ## Thread: API Routes (active)
      [empty — start discussing and summarize later]
+
+     ---
+     _ThreadMind context: ~180 tokens | depth: 2 threads_
+     _Estimated raw history: ~3,400 tokens (~95% reduction from 4 summary updates)_
 ```
 
-### 5. View your thread tree
+### 6. View your thread tree
 
 ```
-You: Show the thread tree
+You: tm:tree
 
 AI:  [calls thread_list]
      main
@@ -117,14 +136,56 @@ AI:  [calls thread_list]
      └── database-schema
 ```
 
+### 7. Check token savings
+
+```
+You: tm:stats
+
+AI:  [calls stats_show]
+     ThreadMind Stats: "My Web App"
+
+     Overview:
+       Threads: 3 (2 with content)
+       Summary updates: 4
+       Current context: ~180 tokens (depth: 2)
+
+     Token Savings (estimated):
+       Estimated raw history: ~3,400 tokens
+       ThreadMind context:    ~180 tokens
+       Reduction:             ~95%
+```
+
+## Quick Shortcuts Reference
+
+After running `threadmind_init`, you can type these shortcuts directly in chat:
+
+| Command | Action |
+|---------|--------|
+| `tm:help` | Show all available commands |
+| `tm:context` | Load assembled context |
+| `tm:tree` | Show thread tree |
+| `tm:create <title>` | Create a new thread |
+| `tm:switch <id>` | Switch to a thread |
+| `tm:summary` | Auto-generate and save a summary |
+| `tm:summary <content>` | Save specific summary content |
+| `tm:stats` | Show token savings statistics |
+| `tm:delete <id>` | Delete a thread |
+| `tm:init` | Generate instruction files |
+| `tm:project <title>` | Create a new project |
+| `tm:projects` | List all projects |
+
+These also work as MCP Prompts (slash commands) in Claude Code: `/mcp__thread-mind__tm-help`, etc.
+
 ## Recommended Workflow
 
 1. **Create a project** at the start of a new codebase or feature
-2. **Work in the main thread** for initial planning and broad decisions
-3. **Branch** when you dive into a specific sub-topic
-4. **Summarize** after each meaningful discussion — keep summaries concise (5-15 lines)
-5. **Switch threads** when changing topics
-6. **Use `context_get`** to feed the AI your structured context instead of relying on raw history
+2. **Run `tm:init`** to generate instruction files for your AI client
+3. **Work in the main thread** for initial planning and broad decisions
+4. **Branch** when you dive into a specific sub-topic (`tm:create <title>`)
+5. **Summarize** after each meaningful discussion (`tm:summary`)
+6. **Switch threads** when changing topics (`tm:switch <id>`)
+7. **Use `tm:context`** to feed the AI your structured context instead of relying on raw history
+8. **Check savings** with `tm:stats` to see how much context you're compressing
 
 ::: tip
 Good summaries are the key to ThreadMind's effectiveness. Focus on **decisions, outcomes, and key technical choices** — not on the conversation itself.

@@ -24,6 +24,8 @@ Chaque thread a exactement un parent (sauf `main` qui n'en a pas) et peut avoir 
 thread_create(title: "Système Auth", parentId: "main")
 ```
 
+Ou avec le raccourci : `tm:create Système Auth`
+
 | Paramètre | Type | Défaut | Description |
 |-----------|------|---------|-------------|
 | `title` | string | requis | Titre du thread |
@@ -50,6 +52,8 @@ Les doublons reçoivent des suffixes numériques : `systeme-auth-2`.
 thread_switch(threadId: "auth-ui")
 ```
 
+Ou avec le raccourci : `tm:switch auth-ui`
+
 Bascule sur le thread indiqué. L'outil retourne un aperçu du contexte assemblé pour confirmation.
 
 ## Visualiser l'arborescence
@@ -57,6 +61,8 @@ Bascule sur le thread indiqué. L'outil retourne un aperçu du contexte assembl�
 ```
 thread_list
 ```
+
+Ou avec le raccourci : `tm:tree`
 
 Retourne un arbre ASCII avec le thread actif marqué :
 
@@ -75,6 +81,8 @@ main
 ```
 summary_update(content: "Implémenté l'auth JWT avec...", threadId: "auth")
 ```
+
+Ou avec le raccourci : `tm:summary` (auto-génère) ou `tm:summary <contenu>`
 
 | Paramètre | Type | Défaut | Description |
 |-----------|------|---------|-------------|
@@ -110,6 +118,8 @@ L'IA a suggéré plusieurs options et on en a choisi une.
 ```
 thread_delete(threadId: "auth-api")
 ```
+
+Ou avec le raccourci : `tm:delete auth-api`
 
 Supprime le thread **et tous ses descendants**. Le thread `main` ne peut pas être supprimé.
 

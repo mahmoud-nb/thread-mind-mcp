@@ -15,6 +15,8 @@ ThreadMind uses file-based storage in a `.threadmind/` directory. All files are 
       {thread-id}.md      # Thread files (frontmatter + summary)
   trees/
     {project-id}.json     # Tree structure index
+  stats/
+    {project-id}.json     # Token savings statistics
 ```
 
 ## File Formats
@@ -136,6 +138,50 @@ Denormalized index for fast tree traversal:
 
 ::: info
 The tree file is a **denormalized index** — the same parent-child relationships exist in each thread's frontmatter. If the tree file becomes corrupted or has merge conflicts, it can be regenerated from the thread files.
+:::
+
+---
+
+### `stats/{project-id}.json` (ProjectStats)
+
+Token savings statistics, updated automatically on every `summary_update` call:
+
+```json
+{
+  "projectId": "my-app",
+  "threads": {
+    "main": {
+      "updateCount": 4,
+      "firstContentLength": 350,
+      "currentContentLength": 280,
+      "cumulativeInputLength": 1420,
+      "lastUpdatedAt": "2026-04-15T14:30:00Z"
+    },
+    "auth-system": {
+      "updateCount": 3,
+      "firstContentLength": 200,
+      "currentContentLength": 310,
+      "cumulativeInputLength": 890,
+      "lastUpdatedAt": "2026-04-15T16:00:00Z"
+    }
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `projectId` | `string` | Project this stats file belongs to |
+| `threads` | `Record<string, SummaryStats>` | Per-thread statistics |
+| `threads[id].updateCount` | `number` | How many times `summary_update` was called |
+| `threads[id].firstContentLength` | `number` | Character length of the first summary ever written |
+| `threads[id].currentContentLength` | `number` | Character length of the latest summary |
+| `threads[id].cumulativeInputLength` | `number` | Sum of all content lengths ever submitted |
+| `threads[id].lastUpdatedAt` | `string` | ISO 8601 timestamp of last update |
+
+The key metric is the ratio between `cumulativeInputLength` (total text compressed) and `currentContentLength` (current summary size). This measures how much information ThreadMind compresses over time.
+
+::: tip
+Stats files are informational only. If deleted, they rebuild naturally as users continue calling `summary_update`. No data is lost — only historical tracking resets.
 :::
 
 ---
