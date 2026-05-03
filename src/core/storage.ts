@@ -36,7 +36,21 @@ export class StorageServiceImpl implements StorageService {
     try {
       await readFile(gitignorePath, "utf-8");
     } catch {
-      await writeFile(gitignorePath, "config.json\n", "utf-8");
+      await writeFile(
+        gitignorePath,
+        [
+          "# Per-user state — never commit (each developer has their own active project/thread and author ID)",
+          "config.json",
+          "",
+          "# Token savings statistics — optional",
+          "# Uncomment the line below to ignore stats/ if you prefer to avoid merge conflicts",
+          "# (every summary_update call modifies this file).",
+          "# Keep it committed if you want team-wide cumulative token savings tracking.",
+          "# stats/",
+          "",
+        ].join("\n"),
+        "utf-8"
+      );
     }
   }
 
