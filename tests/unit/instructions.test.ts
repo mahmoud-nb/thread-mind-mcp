@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, readFile, mkdir } from "node:fs/promises";
+import { mkdtemp, rm, readFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { generateInstructions } from "../../src/core/instructions.js";
@@ -113,5 +113,80 @@ describe("generateInstructions", () => {
       const content = await readFile(file.path, "utf-8");
       expect(content).toContain("Special Project Name");
     }
+  });
+
+  it("reports action=created for new files and wraps content in markers", async () => {
+    const result = await generateInstructions({
+      projectTitle: "My App",
+      basePath: tempDir,
+      clients: ["claude"],
+    });
+
+    expect(result.files[0].action).toBe("created");
+    const content = await readFile(join(tempDir, "CLAUDE.md"), "utf-8");
+    expect(content).toContain("<!-- threadmind:start -->");
+    expect(content).toContain("<!-- threadmind:end -->");
+  });
+
+  it("updates only the ThreadMind section when markers already exist, preserving user content", async () => {
+    const claudePath = join(tempDir, "CLAUDE.md");
+
+    // Pre-populate a CLAUDE.md with user content + ThreadMind markers (old title)
+    await writeFile(
+      claudePath,
+      "# My Project Rules\nKeep code clean.\n\n<!-- threadmind:start -->\n## ThreadMind — Context Management\nProject: \"Old Title\"\n<!-- threadmind:end -->\n",
+      "utf-8"
+    );
+
+    const result = await generateInstructions({
+      projectTitle: "New Title",
+      basePath: tempDir,
+      clients: ["claude"],
+    });
+
+    expect(result.files[0].action).toBe("updated");
+    const content = await readFile(claudePath, "utf-8");
+
+    // User content preserved
+    expect(content).toContain("# My Project Rules");
+    expect(content).toContain("Keep code clean.");
+
+    // ThreadMind section updated with new title
+    expect(content).toContain("New Title");
+    expect(content).not.toContain("Old Title");
+
+    // Markers still present
+    expect(content).toContain("<!-- threadmind:start -->");
+    expect(content).toContain("<!-- threadmind:end -->");
+  });
+
+  it("appends ThreadMind section when file exists without markers, preserving existing content", async () => {
+    const claudePath = join(tempDir, "CLAUDE.md");
+
+    // Pre-populate a CLAUDE.md with only user content (no markers)
+    await writeFile(claudePath, "# Existing Rules\nDo not use var.\n", "utf-8");
+
+    const result = await generateInstructions({
+      projectTitle: "My App",
+      basePath: tempDir,
+      clients: ["claude"],
+    });
+
+    expect(result.files[0].action).toBe("appended");
+    const content = await readFile(claudePath, "utf-8");
+
+    // Original content preserved at the top
+    expect(content).toContain("# Existing Rules");
+    expect(content).toContain("Do not use var.");
+
+    // ThreadMind section appended
+    expect(content).toContain("<!-- threadmind:start -->");
+    expect(content).toContain("<!-- threadmind:end -->");
+    expect(content).toContain("My App");
+
+    // Original content appears before ThreadMind section
+    const markerPos = content.indexOf("<!-- threadmind:start -->");
+    const userPos = content.indexOf("# Existing Rules");
+    expect(userPos).toBeLessThan(markerPos);
   });
 });

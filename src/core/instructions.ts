@@ -1,12 +1,15 @@
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export type ClientTarget = "claude" | "cursor" | "generic";
 
 const ALL_CLIENTS: ClientTarget[] = ["claude", "cursor", "generic"];
 
+const MARKER_START = "<!-- threadmind:start -->";
+const MARKER_END = "<!-- threadmind:end -->";
+
 interface GenerateResult {
-  files: { path: string; client: ClientTarget }[];
+  files: { path: string; client: ClientTarget; action: "created" | "updated" | "appended" }[];
 }
 
 /**
@@ -133,6 +136,47 @@ function getFilePath(client: ClientTarget, basePath: string): string {
   }
 }
 
+/**
+ * Write a ThreadMind section into a file using markers.
+ * - File does not exist: create it with the section wrapped in markers.
+ * - File exists with markers: replace only the section between markers.
+ * - File exists without markers: append the section at the end.
+ *
+ * Markers ensure existing user content is never overwritten.
+ */
+async function writeWithMarkers(
+  filePath: string,
+  section: string
+): Promise<"created" | "updated" | "appended"> {
+  const block = `${MARKER_START}\n${section}\n${MARKER_END}`;
+
+  let existing: string | null = null;
+  try {
+    existing = await readFile(filePath, "utf-8");
+  } catch {
+    // file does not exist — will create
+  }
+
+  if (existing === null) {
+    await writeFile(filePath, block + "\n", "utf-8");
+    return "created";
+  }
+
+  if (existing.includes(MARKER_START)) {
+    const startIdx = existing.indexOf(MARKER_START);
+    const endIdx = existing.indexOf(MARKER_END);
+    const updated =
+      existing.slice(0, startIdx) +
+      block +
+      existing.slice(endIdx + MARKER_END.length);
+    await writeFile(filePath, updated, "utf-8");
+    return "updated";
+  }
+
+  await writeFile(filePath, existing.trimEnd() + "\n\n" + block + "\n", "utf-8");
+  return "appended";
+}
+
 export async function generateInstructions(opts: {
   projectTitle: string;
   basePath: string;
@@ -142,10 +186,10 @@ export async function generateInstructions(opts: {
   const result: GenerateResult = { files: [] };
 
   for (const client of clients) {
-    const content = getInstructionContent(client, opts.projectTitle);
+    const section = getInstructionContent(client, opts.projectTitle);
     const filePath = getFilePath(client, opts.basePath);
-    await writeFile(filePath, content, "utf-8");
-    result.files.push({ path: filePath, client });
+    const action = await writeWithMarkers(filePath, section);
+    result.files.push({ path: filePath, client, action });
   }
 
   return result;

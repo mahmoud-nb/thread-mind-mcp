@@ -387,14 +387,22 @@ export function registerTools(server: McpServer, services: Services): void {
         });
 
         const fileList = result.files
-          .map((f) => `  - ${f.client}: ${f.path}`)
+          .map((f) => {
+            const note =
+              f.action === "created"
+                ? "created"
+                : f.action === "updated"
+                ? "updated — existing content preserved"
+                : "appended — existing content preserved";
+            return `  - ${f.client}: ${f.path} (${note})`;
+          })
           .join("\n");
 
         return {
           content: [
             {
               type: "text" as const,
-              text: `Instruction files generated:\n${fileList}\n\nThese files instruct AI clients to automatically use ThreadMind context management.`,
+              text: `Instruction files generated:\n${fileList}\n\nThreadMind section is delimited by <!-- threadmind:start/end --> markers.\nRe-run threadmind_init at any time to update the ThreadMind section without affecting your other content.`,
             },
           ],
         };

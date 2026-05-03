@@ -90,6 +90,25 @@ Add to your Claude Code MCP settings (`~/.claude/settings.json` or project `.cla
 
 > On Windows, `npx` must be wrapped with `cmd /c` because `npx` is a `.cmd` wrapper and cannot be spawned directly by the MCP stdio transport.
 
+**Windows + Volta:**
+
+If you use Volta as your Node.js version manager, use `volta run` to ensure the correct Node.js version is resolved when Claude Code spawns the MCP subprocess:
+
+```json
+{
+  "mcpServers": {
+    "thread-mind": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "volta", "run", "npx", "-y", "thread-mind-mcp"],
+      "env": {}
+    }
+  }
+}
+```
+
+Or via CLI: `claude mcp add thread-mind-mcp --scope project -- cmd /c volta run npx -y thread-mind-mcp`
+
 ### Configure with other MCP clients
 
 ThreadMind uses the **stdio transport**, compatible with any MCP client. Use the same configuration above for your platform.

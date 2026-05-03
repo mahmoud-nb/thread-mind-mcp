@@ -16,11 +16,35 @@ npx thread-mind-mcp
 
 ## Configuration
 
-### Claude Code
+### Quel setup utiliser ?
 
-Ajoutez la configuration suivante dans votre fichier de paramètres MCP :
+| Situation | Approche recommandée |
+|-----------|---------------------|
+| Usage personnel, tous vos projets | [Global — `~/.claude/settings.json`](#global-personnel-tous-les-projets) |
+| Projet en équipe, partagé via git | [Par projet — `.mcp.json`](#par-projet-equipe-mcp-json) |
+| Cursor, Windsurf ou autre client MCP | [Autres clients MCP](#autres-clients-mcp) |
 
-**Globale** (`~/.claude/settings.json`) :
+---
+
+### Claude Code — Global (personnel, tous les projets)
+
+Disponible dans tous vos projets sans configuration supplémentaire. Recommandé si vous êtes seul sur le projet ou si vous souhaitez ThreadMind partout.
+
+**Via CLI (le plus simple) :**
+
+::: code-group
+
+```bash [macOS / Linux]
+claude mcp add thread-mind -- npx -y thread-mind-mcp
+```
+
+```bash [Windows]
+claude mcp add thread-mind -- cmd /c npx -y thread-mind-mcp
+```
+
+:::
+
+**Ou manuellement** dans `~/.claude/settings.json` :
 
 ::: code-group
 
@@ -50,7 +74,27 @@ Ajoutez la configuration suivante dans votre fichier de paramètres MCP :
 
 :::
 
-**Par projet** (`.claude/settings.json` dans votre dépôt) :
+---
+
+### Claude Code — Par projet / Équipe (`.mcp.json`)
+
+Crée un fichier `.mcp.json` à la racine du projet. **Commitez-le dans git** — vos coéquipiers ont automatiquement le MCP configuré après un `git pull`, sans aucune configuration manuelle.
+
+**Via CLI (le plus simple) :**
+
+::: code-group
+
+```bash [macOS / Linux]
+claude mcp add thread-mind --scope project -- npx -y thread-mind-mcp
+```
+
+```bash [Windows]
+claude mcp add thread-mind --scope project -- cmd /c npx -y thread-mind-mcp
+```
+
+:::
+
+Cela crée un `.mcp.json` à la racine du projet :
 
 ::: code-group
 
@@ -79,10 +123,69 @@ Ajoutez la configuration suivante dans votre fichier de paramètres MCP :
 ```
 
 :::
+
+::: tip
+`.mcp.json` est différent de `.claude/settings.json`. Ce dernier stocke les préférences personnelles de Claude Code (permissions, hooks) et est généralement gitignored. `.mcp.json` est spécifiquement conçu pour la configuration MCP partagée en équipe.
+:::
+
+---
 
 ### Autres clients MCP
 
-Tout client supportant le transport stdio MCP peut utiliser ThreadMind avec le même modèle de configuration. Sur Windows, encapsulez `npx` avec `cmd /c` comme indiqué ci-dessus.
+ThreadMind utilise le transport **stdio MCP standard** et fonctionne avec tout client compatible — Cursor, Windsurf, Continue, et autres. Ajoutez-le dans le fichier de configuration MCP de votre client :
+
+::: code-group
+
+```json [macOS / Linux]
+{
+  "mcpServers": {
+    "thread-mind": {
+      "command": "npx",
+      "args": ["-y", "thread-mind-mcp"]
+    }
+  }
+}
+```
+
+```json [Windows]
+{
+  "mcpServers": {
+    "thread-mind": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "thread-mind-mcp"],
+      "env": {}
+    }
+  }
+}
+```
+
+:::
+
+Consultez la documentation de votre client pour connaître l'emplacement exact du fichier de configuration.
+
+::: tip
+Après tout changement de configuration, **redémarrez complètement votre client IA** pour que les modifications MCP prennent effet.
+:::
+
+::: details Windows avec Volta (gestionnaire de versions Node.js)
+Si vous utilisez **Volta**, son shim `npx` peut ne pas être résolvable quand votre client IA spawn des sous-processus — celui-ci hérite du PATH système, pas du PATH de votre session shell. Utilisez `volta run` pour déléguer explicitement la résolution de version :
+
+```json
+{
+  "mcpServers": {
+    "thread-mind": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "volta", "run", "npx", "-y", "thread-mind-mcp"],
+      "env": {}
+    }
+  }
+}
+```
+
+Via CLI : `claude mcp add thread-mind -- cmd /c volta run npx -y thread-mind-mcp`
+:::
 
 ## Votre premier projet
 
