@@ -62,6 +62,7 @@ npm install -g thread-mind-mcp
 
 Add to your Claude Code MCP settings (`~/.claude/settings.json` or project `.claude/settings.json`):
 
+**macOS / Linux:**
 ```json
 {
   "mcpServers": {
@@ -72,21 +73,26 @@ Add to your Claude Code MCP settings (`~/.claude/settings.json` or project `.cla
   }
 }
 ```
+
+**Windows:**
+```json
+{
+  "mcpServers": {
+    "thread-mind": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "thread-mind-mcp"],
+      "env": {}
+    }
+  }
+}
+```
+
+> On Windows, `npx` must be wrapped with `cmd /c` because `npx` is a `.cmd` wrapper and cannot be spawned directly by the MCP stdio transport.
 
 ### Configure with other MCP clients
 
-ThreadMind uses the **stdio transport**, compatible with any MCP client:
-
-```json
-{
-  "mcpServers": {
-    "thread-mind": {
-      "command": "npx",
-      "args": ["-y", "thread-mind-mcp"]
-    }
-  }
-}
-```
+ThreadMind uses the **stdio transport**, compatible with any MCP client. Use the same configuration above for your platform.
 
 ---
 

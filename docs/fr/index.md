@@ -41,7 +41,9 @@ features:
 
 Ajoutez ThreadMind à votre client IA en quelques secondes :
 
-```json
+::: code-group
+
+```json [macOS / Linux]
 {
   "mcpServers": {
     "thread-mind": {
@@ -51,6 +53,21 @@ Ajoutez ThreadMind à votre client IA en quelques secondes :
   }
 }
 ```
+
+```json [Windows]
+{
+  "mcpServers": {
+    "thread-mind": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "thread-mind-mcp"],
+      "env": {}
+    }
+  }
+}
+```
+
+:::
 
 Puis commencez à organiser :
 

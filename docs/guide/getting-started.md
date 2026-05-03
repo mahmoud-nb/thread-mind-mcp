@@ -21,7 +21,10 @@ npx thread-mind-mcp
 Add the following to your MCP settings file:
 
 **Global** (`~/.claude/settings.json`):
-```json
+
+::: code-group
+
+```json [macOS / Linux]
 {
   "mcpServers": {
     "thread-mind": {
@@ -32,8 +35,26 @@ Add the following to your MCP settings file:
 }
 ```
 
+```json [Windows]
+{
+  "mcpServers": {
+    "thread-mind": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "thread-mind-mcp"],
+      "env": {}
+    }
+  }
+}
+```
+
+:::
+
 **Per-project** (`.claude/settings.json` in your repo):
-```json
+
+::: code-group
+
+```json [macOS / Linux]
 {
   "mcpServers": {
     "thread-mind": {
@@ -43,10 +64,25 @@ Add the following to your MCP settings file:
   }
 }
 ```
+
+```json [Windows]
+{
+  "mcpServers": {
+    "thread-mind": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "thread-mind-mcp"],
+      "env": {}
+    }
+  }
+}
+```
+
+:::
 
 ### Other MCP Clients
 
-Any client supporting the MCP stdio transport can use ThreadMind with the same configuration pattern.
+Any client supporting the MCP stdio transport can use ThreadMind with the same configuration pattern. On Windows, wrap `npx` with `cmd /c` as shown above.
 
 ## Your First Project
 

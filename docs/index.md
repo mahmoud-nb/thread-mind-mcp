@@ -41,7 +41,9 @@ features:
 
 Add ThreadMind to your AI client in seconds:
 
-```json
+::: code-group
+
+```json [macOS / Linux]
 {
   "mcpServers": {
     "thread-mind": {
@@ -51,6 +53,21 @@ Add ThreadMind to your AI client in seconds:
   }
 }
 ```
+
+```json [Windows]
+{
+  "mcpServers": {
+    "thread-mind": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "thread-mind-mcp"],
+      "env": {}
+    }
+  }
+}
+```
+
+:::
 
 Then start organizing:
 

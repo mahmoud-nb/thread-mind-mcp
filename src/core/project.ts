@@ -1,5 +1,6 @@
 import { execSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import process from "node:process";
 import type {
   ProjectConfig,
   AppState,
@@ -118,7 +119,10 @@ export class ProjectServiceImpl implements ProjectService {
   private generateAuthorId(): string {
     let gitName = "user";
     try {
-      gitName = execSync("git config user.name", { encoding: "utf-8" }).trim();
+      gitName = execSync("git config user.name", {
+          encoding: "utf-8",
+          shell: process.platform === "win32" ? "cmd.exe" : "/bin/sh",
+        }).trim();
     } catch {
       // git not available, use default
     }
