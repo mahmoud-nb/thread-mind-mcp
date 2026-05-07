@@ -1,3 +1,10 @@
+# [0.4.0](https://github.com/mahmoud-nb/thread-mind-mcp/compare/v0.3.2...v0.4.0) (2026-05-07)
+
+
+### Features
+
+* implement thread rebase functionality to move threads under different parents ([b09a0aa](https://github.com/mahmoud-nb/thread-mind-mcp/commit/b09a0aa73f5c2b30d36197b263da3a0dc9bc5486))
+* update tools reference with side effects for thread switching and summary updating ([9773e48](https://github.com/mahmoud-nb/thread-mind-mcp/commit/9773e480e85b671832e3e537ffb8c39c7ab920a3))
 # Changelog
 
 All notable changes to this project will be documented in this file.
