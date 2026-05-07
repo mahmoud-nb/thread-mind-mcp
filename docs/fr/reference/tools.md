@@ -90,6 +90,9 @@ Bascule vers un autre thread.
 
 **Retourne :** Confirmation + aperçu du contexte (300 premiers caractères).
 
+**Effets secondaires :**
+- Définit le thread comme thread actif
+
 ---
 
 ### `thread_list`
@@ -174,6 +177,11 @@ Met à jour le résumé d'un thread.
 
 **Contraintes :**
 - En mode équipe, seul l'auteur peut modifier ses threads
+
+**Effets secondaires :**
+- Écrase le contenu du thread avec le nouveau résumé
+- Met à jour le timestamp `updatedAt`
+- Enregistre la mise à jour dans les statistiques d'économie de tokens
 
 ---
 
@@ -264,15 +272,15 @@ Ces prompts servent de raccourcis — chacun déclenche immédiatement l'outil c
 
 | Prompt | Raccourci pour | Arguments |
 |--------|---------------|-----------|
-| `tm:help` | — | Aucun |
-| `tm:context` | `context_get` | Aucun |
-| `tm:tree` | `thread_list` | Aucun |
-| `tm:create` | `thread_create` | `title` (requis) |
-| `tm:switch` | `thread_switch` | `threadId` (requis) |
-| `tm:rebase` | `thread_rebase` | `threadId` (requis), `newParentId` (requis) |
-| `tm:summary` | `summary_update` | `content` (optionnel — auto-génère si omis) |
-| `tm:stats` | `stats_show` | Aucun |
-| `tm:init` | `threadmind_init` | Aucun |
+| `tm-help` | — | Aucun |
+| `tm-context` | `context_get` | Aucun |
+| `tm-tree` | `thread_list` | Aucun |
+| `tm-create` | `thread_create` | `title` (requis) |
+| `tm-switch` | `thread_switch` | `threadId` (requis) |
+| `tm-rebase` | `thread_rebase` | `threadId` (requis), `newParentId` (requis) |
+| `tm-summary` | `summary_update` | `content` (optionnel — auto-génère si omis) |
+| `tm-stats` | `stats_show` | Aucun |
+| `tm-init` | `threadmind_init` | Aucun |
 
 Dans Claude Code, ils apparaissent comme `/mcp__thread-mind__tm-help`, `/mcp__thread-mind__tm-create`, etc.
 

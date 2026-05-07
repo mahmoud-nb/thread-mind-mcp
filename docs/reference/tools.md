@@ -95,6 +95,9 @@ Switch to a different thread.
 
 **Returns:** Confirmation + context preview (first 300 characters).
 
+**Side effects:**
+- Sets the thread as active
+
 ---
 
 ### `thread_list`
@@ -185,6 +188,11 @@ Update the summary content of a thread.
 **Constraints:**
 - In team mode, can only update threads you authored
 
+**Side effects:**
+- Overwrites the thread's content with the new summary
+- Updates `updatedAt` timestamp
+- Records update in token savings statistics
+
 ---
 
 ### `context_get`
@@ -274,15 +282,15 @@ These prompts act as shortcuts — each one triggers the corresponding tool imme
 
 | Prompt | Shortcut for | Arguments |
 |--------|-------------|-----------|
-| `tm:help` | — | None |
-| `tm:context` | `context_get` | None |
-| `tm:tree` | `thread_list` | None |
-| `tm:create` | `thread_create` | `title` (required) |
-| `tm:switch` | `thread_switch` | `threadId` (required) |
-| `tm:rebase` | `thread_rebase` | `threadId` (required), `newParentId` (required) |
-| `tm:summary` | `summary_update` | `content` (optional — auto-generates if omitted) |
-| `tm:stats` | `stats_show` | None |
-| `tm:init` | `threadmind_init` | None |
+| `tm-help` | — | None |
+| `tm-context` | `context_get` | None |
+| `tm-tree` | `thread_list` | None |
+| `tm-create` | `thread_create` | `title` (required) |
+| `tm-switch` | `thread_switch` | `threadId` (required) |
+| `tm-rebase` | `thread_rebase` | `threadId` (required), `newParentId` (required) |
+| `tm-summary` | `summary_update` | `content` (optional — auto-generates if omitted) |
+| `tm-stats` | `stats_show` | None |
+| `tm-init` | `threadmind_init` | None |
 
 In Claude Code, these appear as `/mcp__thread-mind__tm-help`, `/mcp__thread-mind__tm-create`, etc.
 
