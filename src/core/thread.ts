@@ -173,6 +173,75 @@ export class ThreadServiceImpl implements ThreadService {
     }
   }
 
+  async rebase(opts: {
+    projectId: string;
+    threadId: string;
+    newParentId: string;
+    author: string;
+    mode: "solo" | "team";
+  }): Promise<void> {
+    const { projectId, threadId, newParentId, author, mode } = opts;
+
+    if (threadId === "main") {
+      throw new Error("Cannot rebase the main thread");
+    }
+    if (threadId === newParentId) {
+      throw new Error(`Cannot rebase "${threadId}" onto itself`);
+    }
+
+    const node = await this.storage.readThread(projectId, threadId);
+
+    // Team mode: check ownership
+    if (mode === "team" && node.metadata.author !== author) {
+      throw new Error(
+        `Cannot rebase thread "${threadId}": owned by "${node.metadata.author}", you are "${author}"`
+      );
+    }
+
+    const tree = await this.storage.readTree(projectId);
+
+    if (!tree.nodes[newParentId]) {
+      throw new Error(`Target parent thread "${newParentId}" not found`);
+    }
+    if (node.metadata.parentId === newParentId) {
+      throw new Error(
+        `Thread "${threadId}" is already under "${newParentId}"`
+      );
+    }
+
+    // Anti-circularity: newParentId must not be a descendant of threadId
+    const descendants = this.collectDescendants(threadId, tree);
+    if (descendants.includes(newParentId)) {
+      throw new Error(
+        `Cannot rebase "${threadId}" onto "${newParentId}": "${newParentId}" is a descendant of "${threadId}"`
+      );
+    }
+
+    const oldParentId = node.metadata.parentId;
+
+    // Remove from old parent's children
+    if (oldParentId && tree.nodes[oldParentId]) {
+      tree.nodes[oldParentId].children = tree.nodes[oldParentId].children.filter(
+        (c) => c !== threadId
+      );
+    }
+
+    // Add to new parent's children
+    tree.nodes[newParentId].children.push(threadId);
+
+    // Update parentId in tree node
+    tree.nodes[threadId].parentId = newParentId;
+
+    await this.storage.writeTree(projectId, tree);
+
+    // Update thread frontmatter
+    const now = new Date().toISOString();
+    await this.storage.writeThread(projectId, {
+      ...node,
+      metadata: { ...node.metadata, parentId: newParentId, updatedAt: now },
+    });
+  }
+
   private collectDescendants(
     threadId: string,
     tree: TreeStructure

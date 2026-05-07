@@ -221,6 +221,7 @@ ThreadMind context: ~450 tokens | depth: 3 threads
 | `thread_switch` | Switch to a different thread |
 | `thread_list` | Display the thread tree as ASCII art |
 | `thread_delete` | Delete a thread and all its descendants |
+| `thread_rebase` | Move a thread to a different parent (like `git rebase`) |
 
 #### `thread_create`
 
@@ -234,6 +235,13 @@ ThreadMind context: ~450 tokens | depth: 3 threads
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `threadId` | string | Yes | Thread ID to delete (cascades to descendants) |
+
+#### `thread_rebase`
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `threadId` | string | Yes | Thread ID to move |
+| `newParentId` | string | Yes | New parent thread ID |
 
 ### Summary & Context
 

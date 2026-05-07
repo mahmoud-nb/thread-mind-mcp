@@ -357,6 +357,49 @@ export function registerTools(server: McpServer, services: Services): void {
     }
   );
 
+  // --- thread_rebase ---
+  server.tool(
+    "thread_rebase",
+    "Move a thread to a different parent. All descendants move with it. Similar to git rebase.",
+    {
+      threadId: z.string().describe("ID of the thread to move"),
+      newParentId: z.string().describe("ID of the new parent thread"),
+    },
+    async ({ threadId, newParentId }) => {
+      try {
+        const state = await storage.readConfig();
+        if (!state.activeProjectId) {
+          throw new Error("No active project. Use project_create first.");
+        }
+
+        const projectConfig = await storage.readProjectConfig(
+          state.activeProjectId
+        );
+
+        await thread.rebase({
+          projectId: state.activeProjectId,
+          threadId,
+          newParentId,
+          author: state.author,
+          mode: projectConfig.mode,
+        });
+
+        const treeView = await thread.list(state.activeProjectId);
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Thread "${threadId}" moved under "${newParentId}".\n\n${treeView}`,
+            },
+          ],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
   // --- threadmind_init ---
   server.tool(
     "threadmind_init",

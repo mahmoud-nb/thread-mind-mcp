@@ -120,6 +120,13 @@ export interface ThreadService {
     author: string;
     mode: "solo" | "team";
   }): Promise<void>;
+  rebase(opts: {
+    projectId: string;
+    threadId: string;
+    newParentId: string;
+    author: string;
+    mode: "solo" | "team";
+  }): Promise<void>;
 }
 
 export interface ContextResult {

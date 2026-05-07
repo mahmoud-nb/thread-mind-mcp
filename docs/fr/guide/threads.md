@@ -127,6 +127,48 @@ Si le thread actif est supprimé, le thread actif revient à `main`.
 
 En mode équipe, vous ne pouvez supprimer que les threads dont vous êtes l'auteur.
 
+## Rebaser des threads
+
+Le rebase déplace un thread (et tous ses descendants) vers un autre parent — similaire à `git rebase`.
+
+```
+thread_rebase(threadId: "auth-ui", newParentId: "dashboard")
+```
+
+Ou avec le raccourci : `tm:rebase auth-ui dashboard`
+
+**Avant :**
+```
+main
+├── auth
+│   └── auth-ui
+└── dashboard
+```
+
+**Après `tm:rebase auth-ui dashboard` :**
+```
+main
+├── auth
+└── dashboard
+    └── auth-ui
+```
+
+| Paramètre | Type | Requis | Description |
+|-----------|------|--------|-------------|
+| `threadId` | string | Oui | Thread à déplacer |
+| `newParentId` | string | Oui | Nouveau thread parent |
+
+**Contraintes :**
+- Impossible de rebaser le thread `main`
+- Impossible de créer des références circulaires (ne peut pas rebaser sur un descendant)
+- Impossible de rebaser un thread sur lui-même ou son parent actuel
+- En mode équipe, seul l'auteur du thread peut le rebaser
+
+**Effets secondaires :**
+- Met à jour l'arborescence (l'ancien parent perd l'enfant, le nouveau parent l'acquiert)
+- Met à jour le frontmatter du thread (`parentId`, `updatedAt`)
+- Tous les descendants se déplacent automatiquement avec le thread
+
 ## Format des fichiers thread
 
 Chaque thread est stocké comme un fichier Markdown avec frontmatter YAML :

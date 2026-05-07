@@ -222,4 +222,79 @@ describe("ThreadService", () => {
       expect(state.activeThreadId).toBe("main");
     });
   });
+
+  describe("rebase", () => {
+    it("moves a thread to a new parent and updates tree + frontmatter", async () => {
+      // Create: main → feature-a, main → feature-b
+      await threadService.create({ projectId: "proj", parentId: "main", title: "Feature A", author: "test-user" });
+      await threadService.switch("proj", "main");
+      await threadService.create({ projectId: "proj", parentId: "main", title: "Feature B", author: "test-user" });
+
+      // Rebase feature-a under feature-b
+      await threadService.rebase({
+        projectId: "proj",
+        threadId: "feature-a",
+        newParentId: "feature-b",
+        author: "test-user",
+        mode: "solo",
+      });
+
+      const tree = await storage.readTree("proj");
+      // feature-a is now under feature-b
+      expect(tree.nodes["feature-b"].children).toContain("feature-a");
+      expect(tree.nodes["feature-a"].parentId).toBe("feature-b");
+      // feature-a is no longer under main
+      expect(tree.nodes["main"].children).not.toContain("feature-a");
+
+      // Frontmatter is updated
+      const node = await storage.readThread("proj", "feature-a");
+      expect(node.metadata.parentId).toBe("feature-b");
+    });
+
+    it("throws when attempting to create a circular reference", async () => {
+      await threadService.create({ projectId: "proj", parentId: "main", title: "Parent", author: "test-user" });
+      await threadService.create({ projectId: "proj", parentId: "parent", title: "Child", author: "test-user" });
+
+      // Cannot rebase parent onto its own descendant (child)
+      await expect(
+        threadService.rebase({
+          projectId: "proj",
+          threadId: "parent",
+          newParentId: "child",
+          author: "test-user",
+          mode: "solo",
+        })
+      ).rejects.toThrow("is a descendant of");
+    });
+
+    it("cannot rebase the main thread", async () => {
+      await threadService.create({ projectId: "proj", parentId: "main", title: "Other", author: "test-user" });
+
+      await expect(
+        threadService.rebase({
+          projectId: "proj",
+          threadId: "main",
+          newParentId: "other",
+          author: "test-user",
+          mode: "solo",
+        })
+      ).rejects.toThrow("Cannot rebase the main thread");
+    });
+
+    it("rejects rebase from non-owner in team mode", async () => {
+      await threadService.create({ projectId: "proj", parentId: "main", title: "Feature A", author: "alice" });
+      await threadService.switch("proj", "main");
+      await threadService.create({ projectId: "proj", parentId: "main", title: "Feature B", author: "bob" });
+
+      await expect(
+        threadService.rebase({
+          projectId: "proj",
+          threadId: "feature-a",
+          newParentId: "feature-b",
+          author: "bob",      // bob trying to move alice's thread
+          mode: "team",
+        })
+      ).rejects.toThrow("Cannot rebase thread");
+    });
+  });
 });

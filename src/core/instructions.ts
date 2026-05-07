@@ -60,6 +60,7 @@ The user can type these shortcuts in chat. When you see one, **immediately call 
 | \`tm:tree\` | Call \`thread_list\` and display the tree |
 | \`tm:create <title>\` | Call \`thread_create\` with the given title |
 | \`tm:switch <id>\` | Call \`thread_switch\` with the given thread ID |
+| \`tm:rebase <id> <newParentId>\` | Call \`thread_rebase\` to move the thread to a new parent |
 | \`tm:summary\` | Generate a summary of the current discussion, then call \`summary_update\` |
 | \`tm:summary <content>\` | Call \`summary_update\` with the given content |
 | \`tm:delete <id>\` | Call \`thread_delete\` with the given thread ID |

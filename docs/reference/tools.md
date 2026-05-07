@@ -1,6 +1,6 @@
 # Tools Reference
 
-ThreadMind exposes 11 MCP tools. All tools return structured text responses and use `isError: true` on failure.
+ThreadMind exposes 12 MCP tools. All tools return structured text responses and use `isError: true` on failure.
 
 ## Project Tools
 
@@ -140,6 +140,33 @@ Delete a thread and all its descendants.
 
 ---
 
+### `thread_rebase`
+
+Move a thread (and all its descendants) to a different parent. Similar to `git rebase`.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `threadId` | `string` | Yes | ID of the thread to move |
+| `newParentId` | `string` | Yes | ID of the new parent thread |
+
+**Returns:** Confirmation + updated tree visualization.
+
+**Constraints:**
+- Cannot rebase the `main` thread
+- Cannot create circular references (target parent must not be a descendant of the thread being moved)
+- Cannot rebase onto itself or the current parent
+- In team mode, only the thread's author can rebase it
+
+**Side effects:**
+- Removes thread from old parent's children list
+- Adds thread to new parent's children list
+- Updates `parentId` in tree structure and thread frontmatter
+- Updates `updatedAt` timestamp on the moved thread
+
+---
+
 ## Summary & Context Tools
 
 ### `summary_update`
@@ -215,7 +242,7 @@ The generated instructions tell the AI to:
 
 ## MCP Prompts
 
-ThreadMind provides 10 MCP Prompts — structured templates that clients can invoke as slash commands.
+ThreadMind provides 11 MCP Prompts — structured templates that clients can invoke as slash commands.
 
 ### Core Prompts
 
@@ -247,14 +274,15 @@ These prompts act as shortcuts — each one triggers the corresponding tool imme
 
 | Prompt | Shortcut for | Arguments |
 |--------|-------------|-----------|
-| `tm-help` | — | None |
-| `tm-context` | `context_get` | None |
-| `tm-tree` | `thread_list` | None |
-| `tm-create` | `thread_create` | `title` (required) |
-| `tm-switch` | `thread_switch` | `threadId` (required) |
-| `tm-summary` | `summary_update` | `content` (optional — auto-generates if omitted) |
-| `tm-stats` | `stats_show` | None |
-| `tm-init` | `threadmind_init` | None |
+| `tm:help` | — | None |
+| `tm:context` | `context_get` | None |
+| `tm:tree` | `thread_list` | None |
+| `tm:create` | `thread_create` | `title` (required) |
+| `tm:switch` | `thread_switch` | `threadId` (required) |
+| `tm:rebase` | `thread_rebase` | `threadId` (required), `newParentId` (required) |
+| `tm:summary` | `summary_update` | `content` (optional — auto-generates if omitted) |
+| `tm:stats` | `stats_show` | None |
+| `tm:init` | `threadmind_init` | None |
 
 In Claude Code, these appear as `/mcp__thread-mind__tm-help`, `/mcp__thread-mind__tm-create`, etc.
 
@@ -268,6 +296,7 @@ tm:context             → context_get
 tm:tree                → thread_list
 tm:create Auth System  → thread_create(title: "Auth System")
 tm:switch auth-ui      → thread_switch(threadId: "auth-ui")
+tm:rebase auth-ui dashboard → thread_rebase(threadId: "auth-ui", newParentId: "dashboard")
 tm:summary             → Auto-generate + save summary
 tm:summary <content>   → summary_update(content: ...)
 tm:stats               → stats_show
@@ -341,4 +370,6 @@ Common errors:
 - `"Thread \"x\" not found"` — invalid thread ID
 - `"Parent thread \"x\" not found"` — invalid parent for thread creation
 - `"Cannot delete the main thread"` — attempted to delete root
+- `"Cannot rebase the main thread"` — attempted to rebase root
+- `"\"x\" is a descendant of \"y\""` — circular reference detected during rebase
 - `"Cannot update thread \"x\": owned by \"y\""` — ownership violation in team mode

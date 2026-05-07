@@ -127,6 +127,48 @@ If the active thread is deleted, the active thread resets to `main`.
 
 In team mode, you can only delete threads you authored.
 
+## Rebasing Threads
+
+Rebasing moves a thread (and all its descendants) to a different parent — similar to `git rebase`.
+
+```
+thread_rebase(threadId: "auth-ui", newParentId: "dashboard")
+```
+
+Or using the shortcut: `tm:rebase auth-ui dashboard`
+
+**Before:**
+```
+main
+├── auth
+│   └── auth-ui
+└── dashboard
+```
+
+**After `tm:rebase auth-ui dashboard`:**
+```
+main
+├── auth
+└── dashboard
+    └── auth-ui
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `threadId` | string | Yes | Thread to move |
+| `newParentId` | string | Yes | New parent thread |
+
+**Constraints:**
+- Cannot rebase the `main` thread
+- Cannot create circular references (cannot rebase onto a descendant)
+- Cannot rebase a thread onto itself or its current parent
+- In team mode, only the thread's author can rebase it
+
+**Side effects:**
+- Updates tree structure (old parent loses child, new parent gains child)
+- Updates thread frontmatter (`parentId`, `updatedAt`)
+- All descendants move with the thread automatically
+
 ## Thread File Format
 
 Each thread is stored as a Markdown file with YAML frontmatter:

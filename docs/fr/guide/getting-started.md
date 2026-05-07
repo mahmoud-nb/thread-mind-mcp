@@ -305,6 +305,7 @@ Après avoir exécuté `threadmind_init`, vous pouvez taper ces raccourcis direc
 | `tm:tree` | Afficher l'arborescence des threads |
 | `tm:create <titre>` | Créer un nouveau thread |
 | `tm:switch <id>` | Basculer vers un thread |
+| `tm:rebase` | Déplacer un thread vers un parent différent (comme `git rebase`). |
 | `tm:summary` | Auto-générer et sauvegarder un résumé |
 | `tm:summary <contenu>` | Sauvegarder un contenu de résumé spécifique |
 | `tm:stats` | Afficher les statistiques d'économie de tokens |

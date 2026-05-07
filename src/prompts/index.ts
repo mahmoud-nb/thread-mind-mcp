@@ -141,6 +141,7 @@ After generating the summary, call \`summary_update\` with the content to save i
 | \`tm:tree\` | Show thread tree |
 | \`tm:create <title>\` | Create a new thread |
 | \`tm:switch <id>\` | Switch to a thread |
+| \`tm:rebase <id> <newParentId>\` | Move a thread to a different parent |
 | \`tm:summary <content>\` | Update thread summary |
 | \`tm:stats\` | Show token savings statistics |
 | \`tm:init\` | Generate instruction files |
@@ -155,6 +156,7 @@ After generating the summary, call \`summary_update\` with the content to save i
 | \`thread_switch\` | Switch thread |
 | \`thread_list\` | Show thread tree |
 | \`thread_delete\` | Delete thread + descendants |
+| \`thread_rebase\` | Move thread to a different parent |
 | \`summary_update\` | Update thread summary |
 | \`context_get\` | Get assembled context |
 | \`threadmind_init\` | Generate AI client instructions |
@@ -289,6 +291,29 @@ All prompts above are also available as \`/mcp__thread-mind__<name>\` in the sla
             content: {
               type: "text" as const,
               text: `Generate a concise summary (5-15 lines) of our current discussion for thread "${threadId}", then call \`summary_update\` to save it. Focus on decisions, technical choices, current state, and next steps.`,
+            },
+          },
+        ],
+      };
+    }
+  );
+
+  // --- tm-rebase ---
+  server.prompt(
+    "tm-rebase",
+    "Move a thread to a different parent (shortcut for thread_rebase)",
+    {
+      threadId: z.string().describe("Thread ID to move"),
+      newParentId: z.string().describe("New parent thread ID"),
+    },
+    async ({ threadId, newParentId }) => {
+      return {
+        messages: [
+          {
+            role: "user" as const,
+            content: {
+              type: "text" as const,
+              text: `Call the \`thread_rebase\` tool now with threadId "${threadId}" and newParentId "${newParentId}".`,
             },
           },
         ],

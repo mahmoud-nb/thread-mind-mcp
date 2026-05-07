@@ -305,6 +305,7 @@ After running `threadmind_init`, you can type these shortcuts directly in chat:
 | `tm:tree` | Show thread tree |
 | `tm:create <title>` | Create a new thread |
 | `tm:switch <id>` | Switch to a thread |
+| `tm:rebase` | Move a thread to a different parent (like `git rebase`) |
 | `tm:summary` | Auto-generate and save a summary |
 | `tm:summary <content>` | Save specific summary content |
 | `tm:stats` | Show token savings statistics |
