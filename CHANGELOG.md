@@ -1,3 +1,14 @@
+## [0.4.1](https://github.com/mahmoud-nb/thread-mind-mcp/compare/v0.4.0...v0.4.1) (2026-05-14)
+
+
+### Bug Fixes
+
+* ad and use @types/node ([ad78129](https://github.com/mahmoud-nb/thread-mind-mcp/commit/ad78129778f95c8f840bbdb78784df01ca4c62e7))
+
+
+### Features
+
+* add parent summary warning for child thread creation ([cf7e15a](https://github.com/mahmoud-nb/thread-mind-mcp/commit/cf7e15a4bb3d91d971660cc69e8c6b1d42cc8852))
 # [0.4.0](https://github.com/mahmoud-nb/thread-mind-mcp/compare/v0.3.2...v0.4.0) (2026-05-07)
 
 
