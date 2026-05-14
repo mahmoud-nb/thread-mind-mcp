@@ -81,6 +81,8 @@ Create a new child thread branching from a parent.
 - Updates tree structure
 - Sets new thread as active
 
+**Parent summary check:** After creating the thread, the tool reads the parent's content. If the parent has no summary yet, a `⚠️` warning is appended to the response suggesting to run `tm:summary` on the parent before continuing. The child thread is always created regardless.
+
 ---
 
 ### `thread_switch`

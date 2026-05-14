@@ -35,6 +35,23 @@ If `parentId` is omitted, the new thread branches from the **currently active th
 
 The new thread automatically becomes the active thread.
 
+### Parent summary warning
+
+When a child thread is created, ThreadMind checks whether the parent thread already has a summary. If not, a warning is shown:
+
+```
+Thread "auth-system" created under "main".
+
+main
+└── auth-system ← active
+
+⚠️  Parent thread "main" has no summary yet.
+Run `tm:summary` on "main" before continuing — this ensures the context
+chain is complete when you call `context_get` from child threads.
+```
+
+This is **non-blocking** — the child thread is always created. The warning is a reminder to document the parent before branching, so that `context_get` can assemble a complete context chain for future sessions.
+
 ### ID Generation
 
 Thread IDs follow the same slugification rules as projects:

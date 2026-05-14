@@ -76,6 +76,8 @@ Crée un nouveau thread enfant à partir d'un parent.
 
 **Retourne :** Confirmation avec l'ID du thread + visualisation de l'arbre.
 
+**Vérification du résumé parent :** après la création, l'outil lit le contenu du thread parent. Si celui-ci n'a pas encore de résumé, un avertissement `⚠️` est ajouté à la réponse, suggérant de lancer `tm:summary` sur le parent avant de continuer. Le thread enfant est toujours créé, indépendamment de cette vérification.
+
 ---
 
 ### `thread_switch`

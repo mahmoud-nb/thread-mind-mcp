@@ -131,11 +131,28 @@ export function registerTools(server: McpServer, services: Services): void {
 
         const treeView = await thread.list(state.activeProjectId);
 
+        // Warn if the parent thread has no summary yet
+        let summaryWarning = "";
+        try {
+          const parentNode = await storage.readThread(
+            state.activeProjectId,
+            resolvedParent
+          );
+          if (!parentNode.content) {
+            summaryWarning =
+              `\n\n⚠️  Parent thread "${resolvedParent}" has no summary yet.` +
+              `\nRun \`tm:summary\` on "${resolvedParent}" before continuing — ` +
+              `this ensures the context chain is complete when you call \`context_get\` from child threads.`;
+          }
+        } catch {
+          // Parent read failed — skip warning silently
+        }
+
         return {
           content: [
             {
               type: "text" as const,
-              text: `Thread "${node.metadata.id}" created under "${resolvedParent}".\n\n${treeView}`,
+              text: `Thread "${node.metadata.id}" created under "${resolvedParent}".\n\n${treeView}${summaryWarning}`,
             },
           ],
         };
