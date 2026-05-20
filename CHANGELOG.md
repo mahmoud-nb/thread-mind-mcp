@@ -1,3 +1,9 @@
+## [0.4.2](https://github.com/mahmoud-nb/thread-mind-mcp/compare/v0.4.1...v0.4.2) (2026-05-20)
+
+
+### Bug Fixes
+
+* remove unnecessary '-y' flag from npx command in setup instructions ([5fdc17c](https://github.com/mahmoud-nb/thread-mind-mcp/commit/5fdc17ca4fe5cddc4dd0f545cfbe7be9bae12a2e))
 ## [0.4.1](https://github.com/mahmoud-nb/thread-mind-mcp/compare/v0.4.0...v0.4.1) (2026-05-14)
 
 

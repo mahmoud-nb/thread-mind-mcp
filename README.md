@@ -81,7 +81,7 @@ Add to your Claude Code MCP settings (`~/.claude/settings.json` or project `.cla
     "thread-mind": {
       "type": "stdio",
       "command": "cmd",
-      "args": ["/c", "npx", "-y", "thread-mind-mcp"],
+      "args": ["/c", "npx", "thread-mind-mcp"],
       "env": {}
     }
   }
