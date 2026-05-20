@@ -39,7 +39,7 @@ claude mcp add thread-mind -- npx -y thread-mind-mcp
 ```
 
 ```bash [Windows]
-claude mcp add thread-mind -- cmd /c npx -y thread-mind-mcp
+claude mcp add thread-mind -- cmd /c npx thread-mind-mcp
 ```
 
 :::
@@ -65,7 +65,7 @@ claude mcp add thread-mind -- cmd /c npx -y thread-mind-mcp
     "thread-mind": {
       "type": "stdio",
       "command": "cmd",
-      "args": ["/c", "npx", "-y", "thread-mind-mcp"],
+      "args": ["/c", "npx", "thread-mind-mcp"],
       "env": {}
     }
   }
@@ -89,7 +89,7 @@ claude mcp add thread-mind --scope project -- npx -y thread-mind-mcp
 ```
 
 ```bash [Windows]
-claude mcp add thread-mind --scope project -- cmd /c npx -y thread-mind-mcp
+claude mcp add thread-mind --scope project -- cmd /c npx thread-mind-mcp
 ```
 
 :::
@@ -115,7 +115,7 @@ Cela crée un `.mcp.json` à la racine du projet :
     "thread-mind": {
       "type": "stdio",
       "command": "cmd",
-      "args": ["/c", "npx", "-y", "thread-mind-mcp"],
+      "args": ["/c", "npx", "thread-mind-mcp"],
       "env": {}
     }
   }
@@ -153,7 +153,7 @@ ThreadMind utilise le transport **stdio MCP standard** et fonctionne avec tout c
     "thread-mind": {
       "type": "stdio",
       "command": "cmd",
-      "args": ["/c", "npx", "-y", "thread-mind-mcp"],
+      "args": ["/c", "npx", "thread-mind-mcp"],
       "env": {}
     }
   }
@@ -177,7 +177,7 @@ Si vous utilisez **Volta**, son shim `npx` peut ne pas être résolvable quand v
     "thread-mind": {
       "type": "stdio",
       "command": "cmd",
-      "args": ["/c", "volta", "run", "npx", "-y", "thread-mind-mcp"],
+      "args": ["/c", "volta", "run", "npx", "thread-mind-mcp"],
       "env": {}
     }
   }

@@ -60,7 +60,7 @@ Ajoutez ThreadMind à votre client IA en quelques secondes :
     "thread-mind": {
       "type": "stdio",
       "command": "cmd",
-      "args": ["/c", "npx", "-y", "thread-mind-mcp"],
+      "args": ["/c", "npx", "thread-mind-mcp"],
       "env": {}
     }
   }
