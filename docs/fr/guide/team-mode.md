@@ -5,7 +5,7 @@ Le mode équipe permet de partager les arborescences de threads entre développe
 ## Vue d'ensemble
 
 En mode équipe :
-- Les fichiers de threads et les structures d'arbre sont **commités dans git** et partagés
+- Les fichiers de threads sont **commités dans git** et partagés (chaque fichier enregistre son parent : il n'y a pas d'index d'arbre séparé)
 - Chaque membre a un **identifiant auteur unique** stocké localement
 - Des règles de propriété contrôlent qui peut modifier quels threads
 - Les membres peuvent toujours **brancher depuis n'importe quel thread** pour construire sur le travail des autres
@@ -30,9 +30,11 @@ git push
 
 ```bash
 git pull
-# Sélectionner le projet partagé : project_switch(projectId: "notre-app")
+# Un projet unique est sélectionné automatiquement (sinon : project_switch)
 # Votre ID auteur est créé lors de votre première écriture
 ```
+
+Un collègue qui récupère l'une de vos branches de fonctionnalité démarre sur le thread qui lui est lié (voir [Branches git](/fr/guide/threads#branches-git)).
 
 ## Identité de l'auteur
 
@@ -111,15 +113,15 @@ git push
 
 ### Ce qui fusionne sans conflit
 
-- **Fichiers de threads différents** — chaque thread est un fichier `.md` séparé, donc deux personnes créant des threads différents ne sont jamais en conflit
-- **Nouveaux threads** — l'ajout de threads ne fait qu'ajouter à la structure de l'arbre
+- **Fichiers de threads différents** — chaque thread est un fichier `.md` séparé qui enregistre son propre parent : deux personnes qui créent des threads ne sont jamais en conflit, même sous le même parent
+- **État de session et mesures** — ils sont dans `.threadmind/config.json`, qui n'est pas commité
 
 ### Ce qui peut générer des conflits
 
-- **tree.json** — si deux personnes créent des threads sous le même parent simultanément, l'index de l'arbre peut être en conflit. Résolution : accepter les deux changements (les deux nouveaux enfants doivent apparaître)
+- **Le même fichier de thread** — seulement si deux personnes modifient le même thread, ce que les règles de propriété empêchent via ThreadMind
 
-::: tip
-Si les conflits d'arborescence deviennent fréquents, vous pouvez regénérer l'arbre à partir du frontmatter des fichiers de threads. L'arbre est un index dénormalisé — la source de vérité est dans les fichiers de threads eux-mêmes.
+::: warning Mise à jour depuis la 0.4
+Les versions précédentes gardaient l'arbre dans `.threadmind/trees/<projet>.json` et les statistiques dans `.threadmind/stats/`. ThreadMind migre désormais l'arbre dans les fichiers de threads à la première utilisation et supprime `trees/<projet>.json` : commitez ce changement. Mettez à jour toute l'équipe en même temps, car les anciennes versions ont besoin du fichier d'arbre. Le dossier `stats/` n'est plus utilisé et peut être supprimé.
 :::
 
 ## Bonnes pratiques

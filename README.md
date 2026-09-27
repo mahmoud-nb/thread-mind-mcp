@@ -3,9 +3,9 @@
 [![npm version](https://img.shields.io/npm/v/thread-mind-mcp.svg)](https://www.npmjs.com/package/thread-mind-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Organize your AI conversations into thread trees. Think less tokens, think more.**
+**Branches for your AI's memory: a git-friendly tree of thread summaries.**
 
-ThreadMind is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that structures AI conversations into hierarchical threads. Instead of feeding entire conversation histories to your AI model, ThreadMind lets you maintain concise summaries organized in a tree — drastically reducing token consumption while preserving full context.
+ThreadMind is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that gives AI coding sessions a memory: a tree of threads, each holding a short summary of what was decided about one topic, stored as Markdown in your repository. Start a fresh session and the active thread's context — its decisions and those of its ancestors — replaces a history that had grown to tens of thousands of tokens.
 
 > **[Documentation](https://mahmoud-nb.github.io/thread-mind-mcp/)** | **[npm](https://www.npmjs.com/package/thread-mind-mcp)** | **[GitHub](https://github.com/mahmoud-nb/thread-mind-mcp)**
 
@@ -13,36 +13,48 @@ ThreadMind is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/)
 
 ## Why ThreadMind?
 
-When working with AI coding assistants (Claude Code, ChatGPT, Gemini, etc.), conversations quickly grow long. Every new message sends the **entire history** as context, burning through tokens and hitting context limits. ThreadMind solves this by:
+With AI coding assistants, conversations grow long: every request carries the whole history, until the client compacts it or you start over — and starting over loses what was decided. ThreadMind keeps what matters:
 
-- **Replacing history with summaries** — each thread stores a concise summary instead of raw conversation
-- **Inheriting context through the tree** — a child thread automatically includes its ancestors' summaries
-- **Enabling branching exploration** — explore different approaches in separate threads without polluting each other
-- **Supporting team collaboration** — share thread trees via git, branch from teammates' threads
+- **Summaries in sections** — Decisions, Constraints, State, Open questions, Next steps
+- **Inheritance through the tree** — a thread's context is its summary plus its ancestors' decisions and constraints; sibling branches stay out
+- **Branching exploration** — try approaches in separate threads, merge the winner's conclusions into the parent, keep the reason an approach was abandoned
+- **Git-aware** — a thread created on a feature branch becomes active whenever that branch is checked out, and summaries warn when the code they describe has changed
+- **Team collaboration** — thread files are committed with the code and reviewed in pull requests
 
-### Before ThreadMind
+### Where the savings come from
 
-```
-Message 1 → Message 2 → ... → Message 50 → Message 51
-                                              ↑
-                              All 50 messages sent as context
-                              = thousands of tokens wasted
-```
-
-### With ThreadMind
+ThreadMind can't shrink a conversation in progress: your client decides what it sends. The savings come when you start over:
 
 ```
-main (summary: 200 tokens)
-├── auth (summary: 150 tokens)
-│   └── auth-ui (summary: 100 tokens) ← active
-└── dashboard (summary: 180 tokens)
+Before /clear:   the conversation carries ~48,000 tokens of history
+After /clear:    the session starts with the thread's context, ~1,100 tokens
 
-Context sent = main + auth + auth-ui = ~450 tokens
+main
+├── auth
+│   └── auth-ui ← active     context = main + auth (decisions, constraints) + auth-ui
+└── dashboard                 dashboard stays out
 ```
+
+With the [Claude Code plugin](#claude-code-plugin-recommended), the context reloads automatically after `/clear` and after compaction, and `stats_show` measures both sizes on your own sessions.
 
 ---
 
 ## Quick Start
+
+### Claude Code plugin (recommended)
+
+```
+/plugin marketplace add mahmoud-nb/thread-mind-mcp
+/plugin install thread-mind@thread-mind
+```
+
+The plugin installs the server and adds:
+
+- a **SessionStart hook** that loads the active thread's context at startup, after `/clear` and after compaction (nothing happens in repositories without a ThreadMind project)
+- a **SessionEnd hook** that records how large the conversation grew, read from its transcript, for `stats_show`
+- **commands**: `/thread-mind:context`, `/thread-mind:tree`, `/thread-mind:create`, `/thread-mind:switch`, `/thread-mind:summary`, `/thread-mind:merge`, `/thread-mind:stats`
+
+If you configured ThreadMind manually before, remove that configuration so Claude Code doesn't run two servers.
 
 ### Installation
 
@@ -148,9 +160,10 @@ The server sends its usage instructions when the client connects (MCP server ins
 | Concept | Description |
 |---------|-------------|
 | **Project** | A workspace containing a thread tree. Has a title, system context, and mode (solo/team). |
-| **Thread** | A node in the tree representing a discussion topic. Stores a markdown summary. |
-| **Context** | The assembled chain of summaries from root to active thread — what gets sent to the AI. |
-| **Summary** | A concise markdown description of what was discussed/decided in a thread. |
+| **Thread** | A node in the tree representing a discussion topic. Stores a markdown summary, and may be linked to a git branch, done or abandoned. |
+| **Summary** | What was decided in a thread, in sections: Decisions, Constraints, State, Open questions, Next steps. |
+| **Context** | The active thread's summary plus its ancestors' decisions and constraints — what the AI loads. |
+| **Session** | Each client session has its own active thread; new sessions start from the checked-out git branch. |
 
 ### Storage
 
@@ -158,7 +171,7 @@ ThreadMind stores everything in a `.threadmind/` directory at your project root:
 
 ```
 .threadmind/
-  config.json              # Local state (active project/thread, author ID)
+  config.json              # Local state: where sessions start, author ID, session measurements
   .gitignore               # Excludes config.json from git
   projects/
     my-app.json            # Project configuration
@@ -167,11 +180,9 @@ ThreadMind stores everything in a `.threadmind/` directory at your project root:
       main.md              # Root thread (markdown + YAML frontmatter)
       auth-system.md       # Child thread
       auth-api.md          # Grandchild thread
-  trees/
-    my-app.json            # Tree structure index
 ```
 
-Thread files use YAML frontmatter:
+Thread files use YAML frontmatter. Each one records its parent: the tree is rebuilt from the files, with no index to keep in sync or to conflict in git.
 
 ```markdown
 ---
@@ -179,18 +190,26 @@ id: auth-system
 title: Authentication System
 parentId: main
 author: mahmoud-a3f9
-createdAt: 2026-04-15T10:00:00Z
-updatedAt: 2026-04-15T12:30:00Z
+createdAt: 2026-04-15T10:00:00.000Z
+updatedAt: 2026-04-15T12:30:00.000Z
+branch: feature/auth
+commit: 3f2a9c1e5b7d4a8f0c6e2b1d9a7f5c3e1b0d8a6f
+paths: ["src/auth"]
 ---
 
-Implemented JWT-based authentication with refresh tokens.
-Using bcrypt for password hashing. Session stored in httpOnly cookies.
-Decision: chose Passport.js over custom middleware for maintainability.
+## Decisions
+- JWT with refresh tokens, stored in httpOnly cookies
+- Passport.js over custom middleware, for maintainability
+
+## State
+- Login and refresh done, logout pending
 ```
+
+`status`, `branch`, `commit`, `paths` and `mergedInto` only appear when set.
 
 ### Context Assembly
 
-When you request context, ThreadMind walks up from the active thread to the root, collecting summaries:
+When you request context, ThreadMind walks up from the active thread to the root. It keeps the whole summary of the active thread, and only the **Decisions** and **Constraints** of its ancestors:
 
 ```
 ## System Context
@@ -199,25 +218,36 @@ You are building a Next.js e-commerce application...
 ---
 
 ## Thread: My App
-Project overview: Next.js 15, PostgreSQL, Stripe integration...
+
+## Decisions
+- Next.js 15, PostgreSQL, Stripe
 
 ---
 
 ## Thread: Authentication System
-JWT-based auth with refresh tokens, bcrypt, Passport.js...
+
+## Decisions
+- JWT with refresh tokens, bcrypt, Passport.js
 
 ---
 
 ## Thread: Auth API Endpoints (active)
-POST /auth/login, POST /auth/register, POST /auth/refresh...
+
+_⚠ 2 commits changed src/api since this summary was written: check it is still accurate._
+
+## Decisions
+- POST /auth/login, POST /auth/register, POST /auth/refresh
+
+## Next steps
+- Rate limiting on /auth/login
+
+---
+_ThreadMind context: ~160 tokens | depth: 3 threads_
 ```
 
-Only the **direct ancestor chain** is included — sibling branches are excluded, keeping context minimal.
-
-`context_get` also reports token estimation:
-```
-ThreadMind context: ~450 tokens | depth: 3 threads
-```
+- Only the **direct ancestor chain** is included — sibling branches are excluded
+- Summaries written before code changes are flagged, using the commit and `paths` recorded with them
+- `maxTokens` leaves out the farthest ancestors first when the context would be too large
 
 ---
 
@@ -230,8 +260,8 @@ Each tool declares a title and MCP annotations (read-only, destructive, idempote
 | Tool | Description |
 |------|-------------|
 | `project_create` | Create a new project with a root "main" thread |
-| `project_list` | List all projects (shows active project) |
-| `project_switch` | Switch to a different project |
+| `project_list` | List all projects (shows the session's project) |
+| `project_switch` | Switch the session to a different project (a single project is selected automatically) |
 
 #### `project_create`
 
@@ -245,9 +275,11 @@ Each tool declares a title and MCP annotations (read-only, destructive, idempote
 
 | Tool | Description |
 |------|-------------|
-| `thread_create` | Create a child thread branching from a parent |
-| `thread_switch` | Switch to a different thread and return its assembled context |
-| `thread_list` | Display the thread tree as ASCII art |
+| `thread_create` | Create a child thread; on a feature branch, link it to the branch |
+| `thread_switch` | Switch this session to a different thread and return its assembled context |
+| `thread_list` | Display the thread tree, with statuses and linked branches |
+| `thread_status` | Mark a thread done or abandoned (the reason is kept in its decisions), or reopen it |
+| `thread_merge` | Fold a finished thread into its parent: replaces the parent's summary, marks the thread done |
 | `thread_delete` | Delete a thread and all its descendants |
 | `thread_rebase` | Move a thread to a different parent (like `git rebase`) |
 
@@ -257,6 +289,21 @@ Each tool declares a title and MCP annotations (read-only, destructive, idempote
 |-----------|------|----------|-------------|
 | `title` | string | Yes | Thread title (used to generate ID) |
 | `parentId` | string | No | Parent thread ID (defaults to active thread) |
+
+#### `thread_status`
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `status` | `"active"` \| `"done"` \| `"abandoned"` | Yes | New status |
+| `threadId` | string | No | Target thread (defaults to active thread) |
+| `reason` | string | No | Why, added to the thread's Decisions section |
+
+#### `thread_merge`
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `parentSummary` | string | Yes | The parent's new summary, including the thread's conclusions |
+| `threadId` | string | No | Thread to merge (defaults to active thread) |
 
 #### `thread_delete`
 
@@ -275,15 +322,24 @@ Each tool declares a title and MCP annotations (read-only, destructive, idempote
 
 | Tool | Description |
 |------|-------------|
-| `summary_update` | Update the summary content of a thread |
-| `context_get` | Get the full assembled context with token estimation |
+| `summary_update` | Update the summary of a thread, or one of its sections |
+| `context_get` | Get the assembled context with token estimation |
 
 #### `summary_update`
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `content` | string | Yes | New summary content (markdown) |
+| `content` | string | Yes | New summary, or the text to add to `section` (markdown) |
 | `threadId` | string | No | Target thread (defaults to active thread) |
+| `section` | string | No | `decisions`, `constraints`, `state`, `open-questions` or `next-steps`: only update that section |
+| `replaceSection` | boolean | No | Replace the section instead of adding to it |
+| `paths` | string[] | No | Files or directories the thread is about, to flag the summary when they change |
+
+#### `context_get`
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `maxTokens` | number | No | Token budget; the farthest ancestors are left out first (`thread_switch` accepts it too) |
 
 ### Setup
 
@@ -312,9 +368,15 @@ Earlier versions wrote `CLAUDE.md` and `.cursorrules`. `threadmind_init` moves t
 
 | Tool | Description |
 |------|-------------|
-| `stats_show` | Show token savings statistics (compression ratio, per-thread breakdown) |
+| `stats_show` | Show summary sizes and, with the Claude Code plugin, measured conversation sizes |
 
-`stats_show` tracks every `summary_update` call and computes estimated token savings by comparing cumulative input against the current assembled context.
+With the plugin, each session records the size its conversation reached (read from the Claude Code transcript) and the context loaded when the next one started. `stats_show` reports both:
+
+```
+Measured sessions (Claude Code plugin):
+  Conversation size when sessions ended: ~48,200 tokens on average, ~96,000 at most (12 sessions)
+  ThreadMind context loaded at session start: ~1,150 tokens on average (14 sessions)
+```
 
 ---
 
@@ -337,7 +399,7 @@ Every thread of the active project is listed as a resource: in Claude Code, type
 | `tm-help` | Show all available ThreadMind commands |
 | `tm-context` | Load the active thread's context into the conversation |
 | `tm-tree` | Show the thread tree |
-| `tm-stats` | Show token savings statistics |
+| `tm-stats` | Show statistics |
 | `tm-create` | Create a new thread (via `thread_create`) |
 | `tm-switch` | Switch to a thread (via `thread_switch`) |
 | `tm-rebase` | Move a thread to a different parent (via `thread_rebase`) |
@@ -361,9 +423,12 @@ The server instructions teach the AI short text commands you can type directly i
 | `tm:tree` | Show thread tree |
 | `tm:create <title>` | Create a new thread |
 | `tm:switch <id>` | Switch to a thread |
-| `tm:summary` | Auto-generate and save a summary |
+| `tm:summary` | Write and save the summary |
 | `tm:summary <content>` | Save specific summary content |
-| `tm:stats` | Show token savings statistics |
+| `tm:merge` | Fold the thread into its parent |
+| `tm:done [reason]` | Mark the thread done |
+| `tm:abandon <reason>` | Mark the thread abandoned |
+| `tm:stats` | Show statistics |
 | `tm:delete <id>` | Delete a thread |
 | `tm:rebase <id> <newParentId>` | Move a thread to a different parent |
 | `tm:init` | Generate instruction files |
@@ -388,54 +453,56 @@ Claude Code needs no further setup. To let other agents (Codex, Cursor, Copilot�
 ### 2. Work and summarize
 
 ```
-You: [discuss authentication implementation with AI...]
-You: Update the summary for this thread with what we discussed
+You: [discuss the architecture with AI...]
+You: tm:summary
 
-AI: [calls summary_update with content summarizing the auth discussion]
+AI: [writes the summary in sections, then calls summary_update]
+     ## Decisions
+     - Next.js 15 App Router, PostgreSQL with Prisma, Stripe Checkout
+     ## Next steps
+     - Authentication
+
+You: We'll use Stripe webhooks for order confirmation, record it.
+
+AI: [calls summary_update with section "decisions"] → Section "decisions" updated.
 ```
 
-### 3. Branch into a sub-topic
+### 3. Branch into a sub-topic, on its git branch
 
 ```
-You: Create a new thread for "Payment Integration"
+$ git switch -c feature/payments
+
+You: tm:create Payment Integration
 
 AI: [calls thread_create] → Thread "payment-integration" created under "main".
+     Linked to git branch "feature/payments".
+
+     main
+     └── payment-integration [branch: feature/payments] ← active
+```
+
+### 4. Start fresh when the conversation grows
+
+```
+You: tm:summary
+You: /clear
+
+(the plugin loads the context of payment-integration: main's decisions
+ and constraints, then the whole payment-integration summary)
+```
+
+Without the plugin, ask for `tm:context` in the new session.
+
+### 5. Finish the thread
+
+```
+You: tm:merge
+
+AI: [writes main's new summary with the payment decisions, calls thread_merge]
+     → Thread "payment-integration" merged into "main", which is now the active thread.
 
      main ← active
-     └── payment-integration
-```
-
-### 4. Navigate threads
-
-```
-You: Show me the thread tree
-
-AI: [calls thread_list] →
-     main
-     ├── auth-system
-     │   ├── auth-ui
-     │   └── auth-api
-     └── payment-integration ← active
-```
-
-### 5. Get assembled context
-
-```
-You: What's the current context?
-
-AI: [calls context_get] →
-     ## System Context
-     Building a Next.js e-commerce platform with Stripe payments
-
-     ---
-
-     ## Thread: E-Commerce App
-     Project overview...
-
-     ---
-
-     ## Thread: Payment Integration (active)
-     Stripe integration details...
+     └── payment-integration [done] [branch: feature/payments]
 ```
 
 ---
@@ -453,19 +520,26 @@ Team mode enables collaborative thread trees shared via git.
 
 2. Each team member gets an author ID on their first write, derived from `git config user.name` and a short hash of `git config user.email` (stable across clones; override it with the `THREADMIND_AUTHOR` environment variable)
 
-3. Thread files (`.threadmind/threads/`) and tree structure (`.threadmind/trees/`) are **tracked by git**
+3. Thread files (`.threadmind/threads/`) are **tracked by git**. Each one records its parent, so two people creating threads never conflict, even under the same parent
 
-4. The local config (`.threadmind/config.json`) is **gitignored** — each member has their own active thread state
+4. The local config (`.threadmind/config.json`) is **gitignored** — each member has their own session state and measurements
+
+5. A teammate who checks out your feature branch starts on the thread linked to it
 
 ### Rules
 
 | Action | Own threads | Teammates' threads |
 |--------|------------|-------------------|
 | Read summary | Yes | Yes |
-| Update summary | Yes | No |
-| Delete | Yes | No |
+| Update summary, change status | Yes | No |
+| Merge into parent | If you own the parent too | No |
+| Delete | Yes, unless a descendant is a teammate's | No |
 | Create child thread | Yes | Yes |
 | Switch to | Yes | Yes |
+
+Ownership prevents accidental edits; it is not access control.
+
+> **Upgrading from 0.4:** the tree used to live in `.threadmind/trees/`. ThreadMind now moves it into the thread files on first use and deletes `trees/<project>.json` — commit that change, and upgrade the whole team together. `.threadmind/stats/` is no longer used and can be deleted.
 
 ### Workflow
 
@@ -522,6 +596,14 @@ npm run dev           # Watches src/ and restarts on changes
 npm run lint          # TypeScript type check without emitting
 ```
 
+### Hooks
+
+The Claude Code hooks are subcommands of the same binary; they read the hook input on stdin:
+
+```bash
+echo '{"session_id":"test","cwd":"'$PWD'","source":"startup"}' | node dist/index.js hook session-start
+```
+
 ---
 
 ## Publishing
@@ -540,6 +622,8 @@ npm run lint          # TypeScript type check without emitting
 
 ### Release
 
+The changelog is generated from the commits since the last version tag: make sure the previous release is tagged (`git tag`).
+
 ```bash
 # Patch release (0.1.0 → 0.1.1) — bug fixes
 npm run release:patch
@@ -552,12 +636,27 @@ npm run release:major
 ```
 
 These commands will:
-1. Run tests
-2. Build the project
-3. Bump the version in `package.json`
-4. Publish to npm
+1. Bump the version in `package.json`, update `CHANGELOG.md` from the commits, commit and tag
+2. Run the tests and build the project
+3. Publish to npm
+4. Run `npm run plugin:sync`: point the Claude Code plugin and `server.json` at the new version, regenerate the plugin's lockfile (Claude Code installs the server from it) and commit
 
-> Don't forget to update `CHANGELOG.md` before releasing.
+Then push with the tags:
+
+```bash
+git push origin master --follow-tags
+```
+
+If `plugin:sync` fails because npm doesn't serve the new version yet, run it again a minute later.
+
+### MCP Registry
+
+`server.json` describes the server for the [MCP Registry](https://registry.modelcontextprotocol.io). After a release:
+
+```bash
+mcp-publisher login github
+mcp-publisher publish
+```
 
 ---
 
@@ -565,48 +664,61 @@ These commands will:
 
 ```
 src/
-  index.ts              # Entry point — stdio transport
-  server.ts             # McpServer factory (tools + resources + prompts)
+  index.ts              # Entry point — stdio server, or `hook <event>` for the Claude Code hooks
+  server.ts             # McpServer factory (tools + resources + prompts + instructions)
+  services.ts           # Services over one .threadmind directory, shared by server and hooks
   types/
     index.ts            # All TypeScript interfaces
   core/
     frontmatter.ts      # YAML frontmatter parser/serializer (zero deps)
     ids.ts              # ID validation, slugification, title normalization
     lock.ts             # Cross-process lock file
-    storage.ts          # File I/O layer with atomic writes
+    clock.ts            # Strictly increasing timestamps
+    storage.ts          # File I/O with atomic writes; tree derived from thread files
     workspace.ts        # Workspace root resolution (env, client roots, cwd)
+    session.ts          # Active thread per session, per git branch
+    git.ts              # Current branch, commits since a summary
+    summary.ts          # Summary sections: inheritance, section updates
     project.ts          # Project lifecycle management
-    thread.ts           # Thread CRUD, tree operations, ASCII rendering
-    context.ts          # Context assembly + token estimation
-    instructions.ts     # Multi-client instruction file generator
-    stats.ts            # Token savings tracking and statistics
+    thread.ts           # Thread CRUD, status, merge, tree rendering
+    context.ts          # Context assembly, outdated summary notes, token budget
+    instructions.ts     # Server instructions and instruction files
+    stats.ts            # Session measurements and statistics report
+  hooks/
+    index.ts            # SessionStart / SessionEnd hooks of the Claude Code plugin
   tools/
-    index.ts            # 11 MCP tool registrations with Zod schemas
+    index.ts            # 14 MCP tools with Zod schemas and annotations
   resources/
-    index.ts            # 2 MCP resource registrations
+    index.ts            # 2 MCP resources + the thread resource template
   prompts/
-    index.ts            # 2 MCP prompt templates
+    index.ts            # 11 MCP prompts
+plugin/                 # Claude Code plugin (manifest, .mcp.json, hooks, commands)
+.claude-plugin/         # Marketplace listing the plugin
+server.json             # MCP Registry metadata
 ```
 
 ### Design Decisions
 
 - **File-based storage over SQLite** — git-friendly, human-readable, zero native dependencies
+- **Thread files as the single source of truth** — each file records its parent; no tree index to drift or to conflict in git
 - **YAML frontmatter** — thread metadata and content in a single `.md` file, readable by both humans and tools
 - **No external YAML parser** — minimal hand-rolled parser for the simple flat frontmatter format
 - **Atomic writes** — write to a temp file, flush it, then rename it over the target, so a crash never leaves a partial file
-- **Serialized updates** — read-modify-write operations run one at a time, across sessions too, through a lock file
+- **Serialized updates** — read-modify-write operations run one at a time, across sessions and hooks too, through a lock file
 - **Slugified IDs** — thread IDs derived from titles (`"Auth System"` → `"auth-system"`), collision-safe with auto-suffix, restricted to `a-z`, `0-9` and `-` (which also rules out path traversal)
+- **One active thread per session** — sessions don't move each other; new sessions start from the checked-out git branch
+- **Selective inheritance** — ancestors pass on their decisions and constraints, not their state or next steps
 - **MCP Prompts** — slash commands; read-only ones embed their result instead of asking for a tool call
 - **Server instructions** — the server tells clients how to use it, so no instruction file is needed; `threadmind_init` writes the same text to AGENTS.md and other files for agents that don't read them
 - **Workspace resolution** — `THREADMIND_ROOT`, then the client's roots, then the working directory
-- **Token estimation** — approximate token count reported with every context assembly
+- **Measured, not estimated, savings** — conversation sizes come from the Claude Code transcripts; context sizes are estimates (~3.5 characters per token)
 
 ---
 
 ## Requirements
 
 - **Node.js** >= 18.0.0
-- **Git** (optional, for team mode author detection and collaboration)
+- **Git** (optional: team mode author detection, thread–branch links, outdated summary warnings)
 
 ## License
 

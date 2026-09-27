@@ -14,9 +14,8 @@ Cela va :
 1. Générer un ID à partir du titre (`"Mon App"` → `"mon-app"`)
 2. Créer le fichier de configuration du projet
 3. Créer le thread racine `main`
-4. Initialiser l'arborescence
-5. Générer votre identifiant auteur si vous n'en avez pas encore (depuis `git config user.name` + un hash court de `git config user.email`)
-6. Définir ce projet comme actif
+4. Générer votre identifiant auteur si vous n'en avez pas encore (depuis `git config user.name` + un hash court de `git config user.email`)
+5. En faire le projet actif de la session
 
 ### Paramètres
 
@@ -60,7 +59,9 @@ Retourne tous les projets avec leur mode et met en évidence le projet actif :
 project_switch(projectId: "projet-perso")
 ```
 
-Change le projet actif et réinitialise le thread actif à `main`.
+Change le projet de la session. Son thread actif est choisi comme au démarrage d'une session : le dernier utilisé sur la branche récupérée, le thread lié à cette branche, ou `main` (voir [Threads](/fr/guide/threads#le-thread-actif)).
+
+Quand un dépôt n'a qu'un projet, il est sélectionné automatiquement — par exemple dans un clone tout neuf.
 
 ## Modes de projet
 
@@ -85,11 +86,7 @@ Chaque projet crée :
   threads/
     mon-app/
       main.md             # Thread racine
-      ...                 # Autres threads
-  trees/
-    mon-app.json          # Structure de l'arborescence
-  stats/
-    mon-app.json          # Statistiques d'économie de tokens
+      ...                 # Autres threads (chacun enregistre son parent)
 ```
 
 ## Génération d'ID

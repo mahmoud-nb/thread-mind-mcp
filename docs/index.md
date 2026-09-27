@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: ThreadMind MCP
-  text: Think less tokens, think more.
-  tagline: Organize AI conversations into thread trees. Reduce token consumption by replacing full chat histories with structured summaries.
+  text: Branches for your AI's memory.
+  tagline: A git-friendly tree of thread summaries. Start fresh sessions with the decisions that matter, not the whole history.
   actions:
     - theme: brand
       text: Get Started
@@ -19,27 +19,34 @@ hero:
 features:
   - icon: "\U0001F333"
     title: Thread Trees
-    details: Structure your AI conversations as a tree of threads. Each thread inherits context from its ancestors — no more duplicated history.
+    details: Structure your work as a tree of threads. Each thread inherits the decisions and constraints of its ancestors.
   - icon: "\u26A1"
-    title: Token Optimization
-    details: Send only concise summaries instead of full conversation histories. Reduce token usage by 80%+ on long sessions.
+    title: Fresh Sessions, Full Memory
+    details: Clear a long conversation and start again from the thread's context. The Claude Code plugin reloads it automatically and measures the difference.
   - icon: "\U0001F500"
-    title: Branch & Explore
-    details: Explore different reasoning paths in separate threads. Switch between branches without losing context.
+    title: Follows Your Git Branches
+    details: A thread created on a feature branch becomes active whenever that branch is checked out, and warns when the code it describes has changed.
   - icon: "\U0001F465"
     title: Team Collaboration
-    details: Share thread trees via git. Branch from teammates' threads. Each member owns and manages their own summaries.
+    details: Thread files are committed with the code. Branch from teammates' threads; each member owns their own summaries.
   - icon: "\U0001F4C1"
     title: File-Based Storage
-    details: Everything stored as readable Markdown and JSON in a .threadmind/ directory. No database, fully git-friendly.
+    details: Everything is readable Markdown and JSON in a .threadmind/ directory. No database, no index to conflict in git.
   - icon: "\U0001F50C"
     title: MCP Standard
-    details: Works with any MCP-compatible AI client — Claude Code, ChatGPT, Gemini, and more. Install with a single npx command.
+    details: Works with any MCP client — Claude Code, Cursor, Codex, Copilot and more.
 ---
 
 ## Quick Setup
 
-Add ThreadMind to your AI client in seconds:
+In Claude Code, install the plugin:
+
+```
+/plugin marketplace add mahmoud-nb/thread-mind-mcp
+/plugin install thread-mind@thread-mind
+```
+
+In any other MCP client, add the server:
 
 ::: code-group
 

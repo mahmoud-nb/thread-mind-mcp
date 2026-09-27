@@ -5,7 +5,7 @@ Team mode enables collaborative thread trees shared across developers via git.
 ## Overview
 
 In team mode:
-- Thread files and tree structures are **committed to git** and shared
+- Thread files are **committed to git** and shared (each file records its parent: there is no separate tree index)
 - Each team member has a **unique author ID** stored locally
 - Ownership rules control who can modify which threads
 - Members can always **branch from any thread** to build on each other's work
@@ -30,9 +30,11 @@ git push
 
 ```bash
 git pull
-# Select the shared project: project_switch(projectId: "our-app")
+# A single project is selected automatically (otherwise: project_switch)
 # Your author ID is created on your first write
 ```
+
+A teammate who checks out one of your feature branches starts on the thread linked to it (see [Git Branches](/guide/threads#git-branches)).
 
 ## Author Identity
 
@@ -111,15 +113,15 @@ git push
 
 ### What merges cleanly
 
-- **Different thread files** — each thread is a separate `.md` file, so two people creating different threads never conflict
-- **New threads** — adding threads only appends to the tree structure
+- **Different thread files** — each thread is a separate `.md` file that records its own parent, so two people creating threads never conflict, even under the same parent
+- **Session state and measurements** — they live in `.threadmind/config.json`, which is not committed
 
 ### What may conflict
 
-- **tree.json** — if two people create threads under the same parent simultaneously, the tree index may conflict. Resolution: accept both changes (both new children should appear)
+- **The same thread file** — only if two people edit the same thread, which ownership rules prevent through ThreadMind
 
-::: tip
-If tree conflicts become frequent, you can regenerate the tree from the frontmatter in thread files. The tree is a denormalized index — the source of truth is the thread files themselves.
+::: warning Upgrading from 0.4
+Earlier versions kept the tree in `.threadmind/trees/<project>.json` and statistics in `.threadmind/stats/`. ThreadMind now migrates the tree into the thread files on first use and deletes `trees/<project>.json`; commit that change. Upgrade the whole team together: older versions need the tree file. The `stats/` directory is no longer used and can be deleted.
 :::
 
 ## Best Practices

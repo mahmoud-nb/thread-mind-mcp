@@ -1,10 +1,12 @@
 # Tools Reference
 
-ThreadMind exposes 12 MCP tools. All tools return structured text responses and use `isError: true` on failure.
+ThreadMind exposes 14 MCP tools. All tools return structured text responses and use `isError: true` on failure.
 
-Each tool declares a title and MCP annotations: `readOnlyHint` for `project_list`, `thread_list`, `context_get` and `stats_show`; `destructiveHint` for `thread_delete` and `summary_update` (which replaces the previous summary). Clients can use them to decide when to ask for confirmation.
+Each tool declares a title and MCP annotations: `readOnlyHint` for `project_list`, `thread_list`, `context_get` and `stats_show`; `destructiveHint` for `thread_delete`, `summary_update` (which can replace the previous summary) and `thread_merge` (which replaces the parent's summary). Clients can use them to decide when to ask for confirmation.
 
 The server also sends usage instructions to the client when it connects (MCP server instructions), so clients such as Claude Code need no instruction file.
+
+Each session has its own active project and thread: see [The Active Thread](/guide/threads#the-active-thread).
 
 ## Project Tools
 
@@ -23,11 +25,9 @@ Create a new ThreadMind project with a root `main` thread.
 **Returns:** Confirmation with project ID and mode.
 
 **Side effects:**
-- Creates project config file
-- Creates `main` thread
-- Initializes thread tree
+- Creates project config file and `main` thread
 - Generates your author ID (if not set yet)
-- Sets as active project
+- Makes it the session's active project, on `main`
 
 ---
 
@@ -37,7 +37,7 @@ List all ThreadMind projects.
 
 **Parameters:** None
 
-**Returns:** Formatted list with project title, ID, mode, and active marker.
+**Returns:** Formatted list with project title, ID, mode, and the session's project marked.
 
 **Example output:**
 ```
@@ -49,7 +49,7 @@ List all ThreadMind projects.
 
 ### `project_switch`
 
-Switch to a different project.
+Switch the session to a different project.
 
 **Parameters:**
 
@@ -57,11 +57,9 @@ Switch to a different project.
 |------|------|----------|-------------|
 | `projectId` | `string` | Yes | Project ID to switch to |
 
-**Returns:** Confirmation message.
+**Returns:** Confirmation with the active thread, chosen as when a session starts.
 
-**Side effects:**
-- Updates active project
-- Resets active thread to `main`
+A repository with a single project doesn't need it: that project is selected automatically.
 
 ---
 
@@ -78,50 +76,95 @@ Create a new child thread branching from a parent.
 | `title` | `string` | Yes | Thread title (used to generate slug ID) |
 | `parentId` | `string` | No | Parent thread ID (defaults to active thread) |
 
-**Returns:** Confirmation with thread ID + updated tree visualization.
+**Returns:** Confirmation with thread ID, the branch it was linked to (if any), and the updated tree.
 
 **Side effects:**
-- Creates thread file
-- Updates tree structure
-- Sets new thread as active
+- Creates the thread file
+- On a feature branch without an open linked thread, links the thread to that branch
+- Makes it the session's active thread
 
-**Parent summary check:** After creating the thread, the tool reads the parent's content. If the parent has no summary yet, a `⚠️` warning is appended to the response suggesting to run `tm:summary` on the parent before continuing. The child thread is always created regardless.
+**Parent summary check:** if the parent has no summary yet, a `⚠️` warning suggests running `tm:summary` on it. The thread is created regardless.
 
 ---
 
 ### `thread_switch`
 
-Switch to a different thread.
+Switch the session to a different thread.
 
 **Parameters:**
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | `threadId` | `string` | Yes | Thread ID to switch to |
+| `maxTokens` | `number` | No | Token budget for the returned context |
 
 **Returns:** Confirmation + the full assembled context of the new thread, so no `context_get` call is needed afterwards.
 
-**Side effects:**
-- Sets the thread as active
+Other sessions keep their own thread; new sessions on the same git branch start on this one.
 
 ---
 
 ### `thread_list`
 
-Display the thread tree for the active project.
+Display the thread tree of the session's project.
 
 **Parameters:** None
 
-**Returns:** ASCII tree visualization with active thread marked.
+**Returns:** ASCII tree with the active thread, statuses and linked branches.
 
 **Example output:**
 ```
 main
 ├── auth
-│   ├── auth-ui ← active
+│   ├── auth-ui [branch: feature/auth-ui] ← active
 │   └── auth-api
+├── graphql [abandoned]
 └── dashboard
 ```
+
+---
+
+### `thread_status`
+
+Mark a thread as done or abandoned, or reopen it.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `status` | `"active"` \| `"done"` \| `"abandoned"` | Yes | New status |
+| `threadId` | `string` | No | Thread ID (defaults to active thread) |
+| `reason` | `string` | No | Why; added to the thread's Decisions section |
+
+**Returns:** Confirmation + updated tree.
+
+**Constraints:**
+- The `main` thread can't be closed
+- In team mode, only the thread's author can change its status
+
+A closed thread is no longer linked to its branch for new sessions.
+
+---
+
+### `thread_merge`
+
+Fold a finished thread into its parent.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `parentSummary` | `string` | Yes | The parent's new summary, including the thread's conclusions (the AI writes it) |
+| `threadId` | `string` | No | Thread to merge (defaults to active thread) |
+
+**Returns:** Confirmation + updated tree.
+
+**Side effects:**
+- Replaces the parent's summary with `parentSummary`
+- Marks the thread `done`, with `mergedInto` set to the parent
+- Makes the parent the session's active thread
+
+In team mode, you need to own both the thread and its parent.
 
 ---
 
@@ -135,17 +178,14 @@ Delete a thread and all its descendants.
 |------|------|----------|-------------|
 | `threadId` | `string` | Yes | Thread ID to delete |
 
-**Returns:** Confirmation + updated tree visualization.
+**Returns:** Confirmation + updated tree.
 
 **Constraints:**
 - Cannot delete the `main` thread
-- In team mode, can only delete threads you authored
+- In team mode, can only delete threads you authored, and not if a descendant belongs to a teammate
 - Cascades to all descendants
 
-**Side effects:**
-- Deletes thread file(s)
-- Updates tree structure
-- Resets active thread to `main` if the active thread was deleted
+A session whose active thread was deleted moves on as when a session starts.
 
 ---
 
@@ -160,7 +200,7 @@ Move a thread (and all its descendants) to a different parent. Similar to `git r
 | `threadId` | `string` | Yes | ID of the thread to move |
 | `newParentId` | `string` | Yes | ID of the new parent thread |
 
-**Returns:** Confirmation + updated tree visualization.
+**Returns:** Confirmation + updated tree.
 
 **Constraints:**
 - Cannot rebase the `main` thread
@@ -168,11 +208,7 @@ Move a thread (and all its descendants) to a different parent. Similar to `git r
 - Cannot rebase onto itself or the current parent
 - In team mode, only the thread's author can rebase it
 
-**Side effects:**
-- Removes thread from old parent's children list
-- Adds thread to new parent's children list
-- Updates `parentId` in tree structure and thread frontmatter
-- Updates `updatedAt` timestamp on the moved thread
+**Side effects:** updates `parentId` and `updatedAt` in the thread's frontmatter; descendants follow.
 
 ---
 
@@ -180,14 +216,17 @@ Move a thread (and all its descendants) to a different parent. Similar to `git r
 
 ### `summary_update`
 
-Update the summary content of a thread.
+Update the summary of a thread, or one of its sections.
 
 **Parameters:**
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `content` | `string` | Yes | New summary content (markdown) |
+| `content` | `string` | Yes | New summary, or the text to add to `section` (markdown) |
 | `threadId` | `string` | No | Thread to update (defaults to active thread) |
+| `section` | `string` | No | Only update this section: `decisions`, `constraints`, `state`, `open-questions` or `next-steps` |
+| `replaceSection` | `boolean` | No | Replace the section instead of adding to it (for `state` and `next-steps`) |
+| `paths` | `string[]` | No | Files or directories the thread is about; an empty list clears them |
 
 **Returns:** Confirmation with thread ID.
 
@@ -195,30 +234,35 @@ Update the summary content of a thread.
 - In team mode, can only update threads you authored
 
 **Side effects:**
-- Overwrites the thread's content with the new summary
-- Updates `updatedAt` timestamp
-- Records update in token savings statistics
+- Without `section`, replaces the whole summary; with it, adds to (or replaces) that section only, creating it at its place if missing
+- Records the current git commit, used to flag the summary once its `paths` change
+- Updates `updatedAt`
 
 ---
 
 ### `context_get`
 
-Get the full assembled context for the active thread.
+Get the assembled context of the session's active thread.
 
-**Parameters:** None
+**Parameters:**
 
-**Returns:** The assembled context string — system context + ancestor summaries from root to active thread, with a token estimation footer:
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `maxTokens` | `number` | No | Token budget: the farthest ancestors are left out first |
+
+**Returns:** The system context, the durable sections (Decisions, Constraints) of the ancestors' summaries, and the whole summary of the active thread, with a footer:
 
 ```
-ThreadMind context: ~450 tokens | depth: 3 threads
+_ThreadMind context: ~450 tokens | depth: 3 threads_
 ```
 
 **Algorithm:**
-1. Walk from active thread to root via `parentId`
+1. Walk from the active thread to the root via `parentId`
 2. Reverse the chain (root → active)
-3. Concatenate system context + summaries
-4. Skip threads with empty content
-5. Estimate token count (~1 token per 3.5 characters)
+3. Keep the ancestors' Decisions and Constraints (free-form summaries whole) and the active thread's whole summary; skip empty summaries
+4. Add a warning under summaries whose `paths` changed since they were written
+5. Leave out the farthest ancestors to fit `maxTokens`
+6. Estimate token count (~1 token per 3.5 characters)
 
 See [Context Assembly](/guide/context-assembly) for details.
 
@@ -250,9 +294,10 @@ Write the server's usage instructions into files read by agents that don't recei
 In Markdown files, the ThreadMind section sits between `<!-- threadmind:start -->` and `<!-- threadmind:end -->` markers, so the rest of the file is preserved. The Cursor rule file is entirely generated.
 
 The instructions tell the AI to:
-- Call `context_get` once at the start of a session
-- Call `summary_update` after a decision or a completed task, keeping what is still true
+- Call `context_get` once at the start of a session, unless the context was already loaded
+- Structure summaries in sections, and add to a section with `summary_update` after a decision or a completed task
 - Use `thread_list`, then `thread_switch` or `thread_create`, when the topic changes
+- Close finished threads with `thread_merge` or `thread_status`
 - Run the `tm:` shortcuts typed by the user
 
 **Migration:** earlier versions wrote `CLAUDE.md` and `.cursorrules`. When it generates the Cursor rule, `threadmind_init` moves the ThreadMind section out of `.cursorrules` (and deletes the file if nothing else remains). A ThreadMind section left in a file you didn't target is reported, not modified.
@@ -272,7 +317,7 @@ These prompts embed their result directly in the message, without a tool call.
 | `tm-help` | Command reference and active project/thread | None |
 | `tm-context` | Assembled context of the active thread | None |
 | `tm-tree` | Thread tree of the active project | None |
-| `tm-stats` | Token savings statistics | None |
+| `tm-stats` | Summary sizes and measured conversation sizes | None |
 
 ### Prompts that change state
 
@@ -286,7 +331,7 @@ These prompts ask the AI to call the matching tool, so the client's confirmation
 | `tm-summary` | `summary_update` | `content` (optional — the AI writes the summary if omitted), `topic` (optional hint) |
 | `tm-init` | `threadmind_init` | None |
 
-Without `content`, `tm-summary` gives the AI the current summary and a template (decisions and rationale, technical choices, current state, open questions).
+Without `content`, `tm-summary` gives the AI the current summary and the section template.
 
 ### Compatibility aliases
 
@@ -295,7 +340,7 @@ Without `content`, `tm-summary` gives the AI the current summary and a template 
 | `start-thread` | `tm-context` |
 | `summarize-thread` | `tm-summary` without `content` (takes an optional `topic`) |
 
-In Claude Code, these appear as `/mcp__thread-mind__tm-help`, `/mcp__thread-mind__tm-create`, etc.
+In Claude Code, these appear as `/mcp__thread-mind__tm-help`, `/mcp__thread-mind__tm-create`, etc. The [Claude Code plugin](/guide/claude-code-plugin) adds shorter `/thread-mind:*` commands.
 
 ### Text Shortcuts (`tm:` commands)
 
@@ -308,8 +353,11 @@ tm:tree                → thread_list
 tm:create Auth System  → thread_create(title: "Auth System")
 tm:switch auth-ui      → thread_switch(threadId: "auth-ui")
 tm:rebase auth-ui dashboard → thread_rebase(threadId: "auth-ui", newParentId: "dashboard")
-tm:summary             → Auto-generate + save summary
+tm:summary             → Write + save the summary
 tm:summary <content>   → summary_update(content: ...)
+tm:merge               → thread_merge (the AI writes the parent's new summary)
+tm:done [reason]       → thread_status(status: "done")
+tm:abandon <reason>    → thread_status(status: "abandoned")
 tm:stats               → stats_show
 tm:delete auth-api     → thread_delete(threadId: "auth-api")
 tm:init                → threadmind_init
@@ -325,43 +373,31 @@ These work in any AI client that reads the MCP server instructions or one of the
 
 ### `stats_show`
 
-Show token savings statistics for the active ThreadMind project.
+Show the state of the project's summaries and, with the Claude Code plugin, how large conversations actually grew.
 
 **Parameters:** None
-
-**Returns:** A formatted report showing:
-- Overview: thread count, summary updates, current context size
-- Token savings: estimated raw history vs ThreadMind context, compression ratio
-- Per-thread breakdown: updates, current tokens, cumulative input, ratio
 
 **Example output:**
 ```
 ThreadMind Stats: "My Project"
 
-Overview:
-  Threads: 5 (3 with tracked updates)
-  Summary updates: 12
-  Current context: ~450 tokens (depth: 3)
+Threads: 7 (5 active, 1 done, 1 abandoned)
+Active thread: auth-ui (depth 3, ~450 tokens of context)
 
-Token Savings (estimated):
-  Estimated raw history: ~12,000 tokens
-  ThreadMind context:    ~450 tokens
-  Reduction:             ~96%
+Summaries:
+  Thread                   Tokens   Updated
+  main                     ~120     2026-09-20
+  auth                     ~90      2026-09-25
+  auth-ui                  ~140     2026-09-27
 
-Per-Thread Breakdown:
-  Thread               Updates  Current   Cumulative    Ratio
-  main                 4        ~120      ~3400         96%
-  auth-system          3        ~90       ~2800         97%
+Measured sessions (Claude Code plugin):
+  Conversation size when sessions ended: ~48,200 tokens on average, ~96,000 at most (12 sessions)
+  ThreadMind context loaded at session start: ~1,150 tokens on average (14 sessions)
 
-Method: Cumulative summary input vs current context size.
-Token estimates use ~3.5 chars/token approximation.
+Summary and context sizes are estimates (~3.5 characters per token); conversation sizes come from the Claude Code transcripts.
 ```
 
-**How it works:** Every call to `summary_update` is tracked. The cumulative input represents the total text compressed into summaries over time. The ratio compares this cumulative input against the current assembled context — showing how much information ThreadMind compresses.
-
-::: info
-Token estimates are approximations (~3.5 chars/token). The MCP protocol does not provide access to actual model token consumption. All metrics are derived from text ThreadMind stores and serves.
-:::
+Without the plugin, the measured section explains how to get measurements. Conversation sizes are read from the transcripts' usage data by the plugin's `SessionEnd` hook; see [Claude Code Plugin](/guide/claude-code-plugin#measured-statistics).
 
 ---
 
@@ -371,7 +407,7 @@ All tools follow the same error pattern:
 
 ```json
 {
-  "content": [{ "type": "text", "text": "Error: No active project. Use project_create first." }],
+  "content": [{ "type": "text", "text": "Error: No ThreadMind project in this workspace. Only create one (project_create) if the user asks for it." }],
   "isError": true
 }
 ```
@@ -379,11 +415,11 @@ All tools follow the same error pattern:
 Thread and project IDs only accept lowercase letters, digits and hyphens. Any other value (including paths such as `../`) is rejected before the tool runs, with an `Input validation error`.
 
 Common errors:
-- `"No active project. Use project_create first."` — no project selected
-- `"Thread \"x\" not found"` — the thread is not in the active project's tree
+- `"No ThreadMind project in this workspace…"` — no project yet
+- `"No active project. Existing projects: … Use project_switch to select one."` — several projects, none selected
+- `"Thread \"x\" not found"` — the thread is not in the project
 - `"Parent thread \"x\" not found"` — invalid parent for thread creation
-- `"Cannot delete the main thread"` — attempted to delete root
-- `"Cannot rebase the main thread"` — attempted to rebase root
+- `"Cannot delete the main thread"`, `"Cannot rebase the main thread"`, `"The main thread cannot be closed"`
 - `"\"x\" is a descendant of \"y\""` — circular reference detected during rebase
 - `"Cannot update thread \"x\": owned by \"y\""` — ownership violation in team mode
 - `"... its descendants include threads owned by others"` — team mode deletion that would cascade to a teammate's threads

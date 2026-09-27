@@ -4,7 +4,7 @@
 
 - **Node.js** 18 ou supérieur
 - Un **client IA compatible MCP** (Claude Code ou tout client supportant MCP)
-- **Git** (optionnel, requis pour le mode équipe)
+- **Git** (optionnel : mode équipe, liens entre threads et branches, alertes de résumés périmés)
 
 ## Installation
 
@@ -20,9 +20,21 @@ npx thread-mind-mcp
 
 | Situation | Approche recommandée |
 |-----------|---------------------|
-| Usage personnel, tous vos projets | [Global — `~/.claude/settings.json`](#global-personnel-tous-les-projets) |
-| Projet en équipe, partagé via git | [Par projet — `.mcp.json`](#par-projet-equipe-mcp-json) |
+| Claude Code | [Le plugin ThreadMind](#plugin-claude-code-recommande) |
+| Claude Code sans le plugin, usage personnel | [Global — `~/.claude/settings.json`](#global-personnel-tous-les-projets) |
+| Claude Code sans le plugin, projet en équipe | [Par projet — `.mcp.json`](#par-projet-equipe-mcp-json) |
 | Cursor, Windsurf ou autre client MCP | [Autres clients MCP](#autres-clients-mcp) |
+
+---
+
+### Plugin Claude Code (recommandé)
+
+```
+/plugin marketplace add mahmoud-nb/thread-mind-mcp
+/plugin install thread-mind@thread-mind
+```
+
+Le plugin installe le serveur et charge le contexte du thread actif au début de chaque session, après `/clear` et après une compaction. Voir [Plugin Claude Code](/fr/guide/claude-code-plugin). Les configurations manuelles ci-dessous sont des alternatives : ne les combinez pas avec le plugin.
 
 ---
 
@@ -248,9 +260,11 @@ Menez votre conversation normale sur le sujet, puis sauvegardez un résumé :
 Vous : [discutez des approches d'authentification avec l'IA...]
 Vous : tm:summary
 
-IA :   [génère un résumé, puis appelle summary_update]
+IA :   [rédige le résumé en sections, puis appelle summary_update]
        ✓ Résumé mis à jour pour le thread "main".
 ```
+
+Par la suite, une seule décision peut être ajoutée sans tout réécrire : `summary_update` avec `section: "decisions"`.
 
 ### 4. Créer des sous-threads
 
@@ -264,29 +278,30 @@ IA :   [appelle thread_create]
        └── routes-api ← actif
 ```
 
-### 5. Consulter le contexte assemblé
+Sur une branche de fonctionnalité, le thread lui est lié : dès que la branche est récupérée, il devient le thread actif.
+
+### 5. Repartir de zéro quand la conversation s'allonge
+
+Quand la conversation devient longue, sauvegardez le résumé et lancez `/clear`. Avec le plugin, la nouvelle session démarre avec le contexte du thread :
 
 ```
-Vous : tm:context
+## Thread: Mon App Web
 
-IA :   [appelle context_get]
-       ## Contexte système
-       Nous construisons une application e-commerce Next.js
+## Décisions
+- Next.js 15, PostgreSQL, Stripe
 
-       ---
+---
 
-       ## Thread : Mon App Web
-       Authentification : utilisation de JWT avec refresh tokens...
+## Thread: Routes API (active)
 
-       ---
+## État
+- Routes produits et panier faites
 
-       ## Thread : Routes API (actif)
-       [vide — commencez à discuter puis résumez]
-
-       ---
-       _ThreadMind context: ~180 tokens | depth: 2 threads_
-       _Estimated raw history: ~3,400 tokens (~95% reduction from 4 summary updates)_
+---
+_ThreadMind context: ~180 tokens | depth: 2 threads_
 ```
+
+Sans le plugin, demandez `tm:context` dans la nouvelle session.
 
 ### 6. Visualiser l'arborescence
 
@@ -295,27 +310,28 @@ Vous : tm:tree
 
 IA :   [appelle thread_list]
        main
-       ├── routes-api ← actif
+       ├── routes-api ← active
        └── schema-bdd
 ```
 
-### 7. Consulter les économies de tokens
+### 7. Terminer un thread
+
+```
+Vous : tm:merge
+
+IA :   [rédige le nouveau résumé du parent, puis appelle thread_merge]
+       ✓ Thread "routes-api" intégré dans "main", qui devient le thread actif.
+```
+
+### 8. Consulter les chiffres
 
 ```
 Vous : tm:stats
 
 IA :   [appelle stats_show]
-       ThreadMind Stats: "Mon App Web"
-
-       Overview:
-         Threads: 3 (2 with content)
-         Summary updates: 4
-         Current context: ~180 tokens (depth: 2)
-
-       Token Savings (estimated):
-         Estimated raw history: ~3,400 tokens
-         ThreadMind context:    ~180 tokens
-         Reduction:             ~95%
+       Measured sessions (Claude Code plugin):
+         Conversation size when sessions ended: ~48,200 tokens on average
+         ThreadMind context loaded at session start: ~1,150 tokens on average
 ```
 
 ## Référence rapide des raccourcis
@@ -330,9 +346,12 @@ Vous pouvez taper ces raccourcis directement dans le chat (les instructions du s
 | `tm:create <titre>` | Créer un nouveau thread |
 | `tm:switch <id>` | Basculer vers un thread |
 | `tm:rebase` | Déplacer un thread vers un parent différent (comme `git rebase`). |
-| `tm:summary` | Auto-générer et sauvegarder un résumé |
+| `tm:summary` | Rédiger et sauvegarder le résumé |
 | `tm:summary <contenu>` | Sauvegarder un contenu de résumé spécifique |
-| `tm:stats` | Afficher les statistiques d'économie de tokens |
+| `tm:merge` | Intégrer le thread dans son parent |
+| `tm:done [raison]` | Marquer le thread terminé |
+| `tm:abandon <raison>` | Marquer le thread abandonné |
+| `tm:stats` | Afficher les statistiques |
 | `tm:delete <id>` | Supprimer un thread |
 | `tm:init` | Générer les fichiers d'instructions |
 | `tm:project <titre>` | Créer un nouveau projet |
@@ -343,16 +362,16 @@ Ces raccourcis fonctionnent aussi comme Prompts MCP (slash commands) dans Claude
 ## Workflow recommandé
 
 1. **Créez un projet** au début d'un nouveau codebase ou fonctionnalité
-2. **Exécutez `tm:init`** pour générer les fichiers d'instructions pour votre client IA
-3. **Travaillez dans le thread principal** pour la planification initiale et les grandes décisions
-4. **Branchez** quand vous plongez dans un sous-sujet spécifique (`tm:create <titre>`)
-5. **Résumez** après chaque discussion significative (`tm:summary`)
+2. **Travaillez dans le thread principal** pour la planification initiale et les grandes décisions
+3. **Branchez** quand vous plongez dans un sous-sujet (`tm:create <titre>`), idéalement sur sa branche git
+4. **Notez les décisions** au fil de l'eau (`tm:summary`)
+5. **Repartez de zéro** avec `/clear` quand la conversation s'allonge : le contexte du thread est conservé
 6. **Changez de thread** quand vous changez de sujet (`tm:switch <id>`)
-7. **Utilisez `tm:context`** pour alimenter l'IA avec votre contexte structuré plutôt que l'historique brut
-8. **Consultez les économies** avec `tm:stats` pour voir la compression de votre contexte
+7. **Intégrez ou clôturez** les threads terminés (`tm:merge`, `tm:done`, `tm:abandon`)
+8. **Consultez les chiffres** avec `tm:stats`
 
 ::: tip
-De bons résumés sont la clé de l'efficacité de ThreadMind. Concentrez-vous sur les **décisions, résultats et choix techniques clés** — pas sur la conversation elle-même.
+De bons résumés sont la clé de l'efficacité de ThreadMind. Mettez ce qui doit rester vrai dans les **Décisions** et **Contraintes** : c'est ce dont héritent les threads enfants.
 :::
 
 ## Prochaines étapes

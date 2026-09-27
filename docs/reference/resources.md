@@ -82,7 +82,7 @@ No active project. Use project_create first.
 
 **MIME type:** `text/markdown`
 
-**Description:** The summary of one thread of the active project, without its ancestors.
+**Description:** The summary of one thread of the active project, without its ancestors. The details line shows the status, linked branch and paths when set.
 
 Every thread of the active project is listed as a resource (named by its ID, titled by its thread title), and the `threadId` variable supports autocompletion. In Claude Code, type `@` to mention one and bring a sibling thread's summary into the conversation without switching threads.
 
@@ -91,7 +91,7 @@ Every thread of the active project is listed as a resource (named by its ID, tit
 ```markdown
 # Auth API Endpoints
 
-_Thread `auth-api` · parent: auth · author: sarah-7b2c · updated: 2026-04-15T12:30:00Z_
+_Thread `auth-api` · parent: auth · branch: feature/auth-api · author: sarah-7b2c · updated: 2026-04-15T12:30:00Z · paths: src/api_
 
 POST /auth/login, POST /auth/register, POST /auth/refresh...
 ```

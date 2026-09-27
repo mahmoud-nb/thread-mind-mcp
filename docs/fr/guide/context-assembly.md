@@ -1,58 +1,68 @@
 # Assemblage du contexte
 
-L'assemblage du contexte est le mécanisme central de ThreadMind — il construit un **contexte ciblé** à partir de l'arborescence pour l'envoyer au modèle IA.
+L'assemblage du contexte est le mécanisme central de ThreadMind : il construit, à partir de l'arbre, un **contexte ciblé** pour le modèle d'IA.
 
 ## Fonctionnement
 
-Quand vous appelez `context_get` (ou `tm:context`) ou lisez la ressource `threadmind://context`, ThreadMind :
+Quand vous appelez `context_get` (ou `tm:context`), changez de thread, lisez la ressource `threadmind://context` ou démarrez une session avec le [plugin Claude Code](/fr/guide/claude-code-plugin), ThreadMind :
 
 1. **Part** du thread actif
 2. **Remonte** l'arbre en suivant les liens `parentId` jusqu'à la racine
 3. **Inverse** la chaîne (racine → ... → actif)
-4. **Concatène** le contexte système + tous les résumés dans l'ordre
-5. **Estime** le nombre de tokens (~1 token pour 3,5 caractères)
+4. **Garde** tout le résumé du thread actif, et seulement les sections durables de ses ancêtres
+5. **Signale** les résumés que des changements de code ont pu rendre obsolètes
+6. **Estime** le nombre de tokens (~1 token pour 3,5 caractères)
 
 ### Exemple
 
-Étant donné cet arbre :
+Avec cet arbre :
 
 ```
-main ("Vue d'ensemble : e-commerce Next.js...")
+main ("Next.js e-commerce...")
 ├── auth ("Auth JWT avec refresh tokens...")
-│   ├── auth-ui ("Formulaire login, page inscription...") ← actif
+│   ├── auth-ui ("Formulaire de connexion, inscription...") ← active
 │   └── auth-api ("POST /login, POST /register...")
-└── dashboard ("Tableau de bord admin avec graphiques...")
+└── dashboard ("Tableau de bord admin...")
 ```
 
 Le contexte assemblé pour `auth-ui` est :
 
 ```markdown
-## Contexte système
+## System Context
 
-Construction d'une application e-commerce Next.js avec Stripe.
-
----
-
-## Thread : Mon App
-
-Vue d'ensemble : e-commerce Next.js avec PostgreSQL...
+Application e-commerce Next.js avec Stripe.
 
 ---
 
-## Thread : Auth
+## Thread: Mon App
 
-Auth JWT avec refresh tokens, bcrypt, Passport.js...
+## Decisions
+- Next.js 15, PostgreSQL, Stripe
+
+---
+
+## Thread: Auth
+
+## Decisions
+- JWT avec refresh tokens, bcrypt, Passport.js
+
+## Constraints
+- Les sessions survivent à un redémarrage du serveur
 
 ---
 
-## Thread : Auth UI (actif)
+## Thread: Auth UI (active)
 
-Formulaire de login email/mot de passe, page d'inscription
-avec validation, flux mot de passe oublié...
+_⚠ 2 commits changed src/auth/ui since this summary was written: check it is still accurate._
+
+## Decisions
+- Formulaire de connexion avec React Hook Form
+
+## State
+- Inscription faite, réinitialisation du mot de passe à faire
 
 ---
-_ThreadMind context: ~450 tokens | depth: 4 threads_
-_Estimated raw history: ~12,000 tokens (~96% reduction from 8 summary updates)_
+_ThreadMind context: ~160 tokens | depth: 3 threads_
 ```
 
 ### Ce qui est exclu
@@ -60,80 +70,48 @@ _Estimated raw history: ~12,000 tokens (~96% reduction from 8 summary updates)_
 - **Les threads frères** (`auth-api` n'est pas inclus)
 - **Les autres branches** (`dashboard` n'est pas inclus)
 - **Les résumés vides** (les threads sans contenu sont ignorés)
+- **Les sections propres aux ancêtres** : State, Open questions et Next steps décrivent où en est *ce* thread, pas ce dont ses descendants ont besoin
 
-C'est intentionnel — seul le **contexte ancestral direct** compte pour le thread actuel.
+Les résumés sans titres de sections sont hérités en entier. Le résumé d'un thread frère reste à portée : lisez sa ressource `threadmind://thread/{id}`.
 
-## Estimation des tokens
+## Résumés périmés
 
-Chaque réponse de `context_get` inclut un pied de page avec :
-- **Tokens du contexte ThreadMind** — nombre approximatif de tokens du contexte assemblé
-- **Historique brut estimé** — combien de tokens les inputs cumulatifs des résumés auraient coûté (affiché après au moins un `summary_update`)
-- **Pourcentage de réduction** — le ratio de compression
+Chaque mise à jour de résumé enregistre le commit git sur lequel elle a été écrite, et éventuellement les `paths` dont parle le thread. À l'assemblage, ThreadMind compte les commits depuis :
 
-L'estimation utilise ~3,5 caractères par token, ce qui est conservateur (légère surestimation).
+| Situation | Note sous le titre du thread |
+|-----------|------------------------------|
+| Des commits ont modifié les `paths` du résumé | `_⚠ 3 commits changed src/auth since this summary was written: check it is still accurate._` |
+| Pas de `paths`, des commits depuis | `_Written 14 commits ago._` |
+| Le commit n'est pas dans l'historique du dépôt (rebasé, jamais poussé) | `_⚠ Written on commit 3f2a9c1, which is not in this repository's history: check this summary is still accurate._` |
 
-::: info
-Les estimations de tokens sont approximatives. Le protocole MCP ne permet pas d'accéder à la consommation réelle de tokens du modèle. Toutes les métriques sont dérivées du texte que ThreadMind stocke et sert.
-:::
+Rien n'est ajouté si git n'est pas disponible ou si rien n'a changé.
 
-## Vérifier les économies de tokens
+## Budget de tokens
 
-Utilisez `stats_show` (ou `tm:stats`) pour obtenir un rapport détaillé :
-
-```
-ThreadMind Stats: "Mon Projet"
-
-Overview:
-  Threads: 5 (3 with tracked updates)
-  Summary updates: 12
-  Current context: ~450 tokens (depth: 3)
-
-Token Savings (estimated):
-  Estimated raw history: ~12,000 tokens
-  ThreadMind context:    ~450 tokens
-  Reduction:             ~96%
-
-Per-Thread Breakdown:
-  Thread               Updates  Current   Cumulative    Ratio
-  main                 4        ~120      ~3400         96%
-  auth-system          3        ~90       ~2800         97%
-  auth-ui              5        ~85       ~5800         99%
-```
-
-**Fonctionnement :** Chaque appel à `summary_update` est tracké. L'input cumulé représente le texte total compressé en résumés au fil du temps. Le ratio compare cet input cumulé au contexte assemblé actuel — montrant la compression réalisée par ThreadMind.
-
-## Économies de tokens
-
-Considérons un projet typique avec 5 niveaux de threads, chacun avec un résumé de 10 lignes (~100 tokens) :
-
-| Approche | Tokens envoyés |
-|----------|----------------|
-| Historique complet (100 messages) | ~50 000 tokens |
-| Contexte ThreadMind (5 résumés) | ~500 tokens |
-| **Économie** | **~99%** |
-
-Même avec des résumés généreux (500 tokens chacun), une chaîne de 5 niveaux ne coûte que 2 500 tokens — une réduction massive.
-
-## Utiliser le contexte
-
-### Comme outil
+`context_get` et `thread_switch` acceptent `maxTokens`. Quand le contexte est plus gros, ThreadMind retire d'abord les ancêtres les plus lointains (le thread actif reste toujours) et les liste dans le pied de page :
 
 ```
-context_get
+_ThreadMind context: ~480 tokens | depth: 4 threads_
+_Left out to fit the token budget: main, backend (readable as threadmind://thread/{id} resources)_
 ```
 
-Ou avec le raccourci :
+Si le thread actif dépasse à lui seul le budget, son texte est coupé.
+
+## D'où vient le gain
+
+ThreadMind ne réduit pas une conversation en cours : le client renvoie tout l'historique à chaque requête. Le gain vient quand vous **repartez** : après `/clear` ou dans une nouvelle session, le contexte du thread (en général quelques centaines à quelques milliers de tokens) remplace un historique qui avait atteint des dizaines de milliers.
+
+Avec le [plugin Claude Code](/fr/guide/claude-code-plugin), ce redémarrage est automatique après `/clear` et après une compaction, et `stats_show` mesure les deux côtés sur vos propres sessions :
+
 ```
-tm:context
+Measured sessions (Claude Code plugin):
+  Conversation size when sessions ended: ~48,200 tokens on average, ~96,000 at most (12 sessions)
+  ThreadMind context loaded at session start: ~1,150 tokens on average (14 sessions)
 ```
 
-Retourne le contexte assemblé sous forme de texte. Utilisez-le pour injecter explicitement le contexte dans votre conversation.
+Les tailles de conversation viennent des transcripts de Claude Code ; les autres chiffres sont des estimations (~3,5 caractères par token).
 
-### Comme ressource
-
-La ressource `threadmind://context` expose le même contexte. Les clients MCP qui supportent les ressources peuvent l'afficher ou l'injecter automatiquement.
-
-## Stratégies d'organisation
+## Stratégies de conception
 
 ### Arbres peu profonds pour les projets simples
 
@@ -144,7 +122,7 @@ main
 └── feature-c
 ```
 
-Chaque fonctionnalité a son thread directement sous main. Contexte = main + feature courante.
+Chaque fonctionnalité a son thread directement sous main. Contexte = décisions de main + fonctionnalité en cours.
 
 ### Arbres profonds pour les sujets complexes
 
@@ -153,10 +131,10 @@ main
 └── auth
     └── oauth
         └── google-provider
-            └── bug-refresh-token
+            └── token-refresh-bug
 ```
 
-Quand un sujet nécessite une exploration approfondie, les threads imbriqués gardent chaque niveau focalisé.
+Quand un sujet demande une exploration poussée, les threads imbriqués gardent chaque niveau ciblé. L'héritage sélectif garde la chaîne courte.
 
 ### Approche hybride
 
@@ -169,17 +147,17 @@ main
 │       ├── routes
 │       └── middleware
 └── frontend
-    ├── composants
-    └── gestion-etat
+    ├── components
+    └── state-management
 ```
 
-Organisez par couche architecturale, puis par fonctionnalité dans chaque couche.
+Organisez par couche d'architecture, puis par fonctionnalité dans chaque couche.
 
 ::: tip
-La profondeur idéale d'un arbre est de **3-5 niveaux**. Des arbres plus profonds signifient plus de contexte par assemblage, ce qui réduit partiellement l'intérêt. Si vous allez plus profond, gardez les résumés très concis.
+Les threads terminés n'ont pas besoin de rester dans la chaîne : intégrez-les dans leur parent avec `thread_merge`. Les conclusions remontent et l'arbre reste peu profond.
 :::
 
-## Protections
+## Garde-fous
 
-- **Détection de références circulaires** — si une chaîne de parents forme une boucle (ne devrait jamais arriver), ThreadMind lève une erreur
-- **Limite de profondeur** — les chaînes sont plafonnées à 50 niveaux pour éviter une traversée infinie
+- **Détection des références circulaires** — si une chaîne de parents forme une boucle (possible seulement dans des fichiers modifiés à la main), ThreadMind lève une erreur
+- **Profondeur maximale** — les chaînes sont limitées à 50 niveaux

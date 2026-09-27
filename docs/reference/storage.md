@@ -14,11 +14,9 @@ ThreadMind uses file-based storage in a `.threadmind/` directory. All files are 
   threads/
     {project-id}/
       {thread-id}.md      # Thread files (frontmatter + summary)
-  trees/
-    {project-id}.json     # Tree structure index
-  stats/
-    {project-id}.json     # Token savings statistics
 ```
+
+The thread files are the tree: each one records its parent, and ThreadMind rebuilds the tree from them. There is no separate index to keep in sync or to conflict in git.
 
 ## File Formats
 
@@ -31,16 +29,35 @@ Per-user local state. **Gitignored** — each team member has their own.
   "activeProjectId": "my-app",
   "activeThreadId": "auth-ui",
   "author": "mahmoud-a3f9",
-  "version": 1
+  "version": 1,
+  "branchThreads": {
+    "my-app": { "main": "main", "feature/auth-ui": "auth-ui" }
+  },
+  "sessions": [
+    {
+      "sessionId": "b1f3…",
+      "projectId": "my-app",
+      "startedAt": "2026-09-27T09:00:00.000Z",
+      "source": "clear",
+      "injectedTokens": 1150,
+      "endedAt": "2026-09-27T11:40:00.000Z",
+      "endReason": "clear",
+      "finalContextTokens": 48200
+    }
+  ]
 }
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `activeProjectId` | `string \| null` | Currently selected project |
-| `activeThreadId` | `string \| null` | Currently selected thread |
+| `activeProjectId` | `string \| null` | Last project used: where new sessions start |
+| `activeThreadId` | `string \| null` | Last thread used, the fallback outside git |
 | `author` | `string` | Author ID (`{git_name}-{4 hex chars derived from git user.email}`), created on first write |
 | `version` | `number` | Schema version for migrations |
+| `branchThreads` | `object` | Last thread used on each git branch, per project |
+| `sessions` | `array` | The last 50 sessions measured by the [Claude Code plugin](/guide/claude-code-plugin) |
+
+Each session keeps its own active thread in memory; this file only holds where the next session starts.
 
 ---
 
@@ -72,17 +89,22 @@ Markdown file with YAML frontmatter:
 
 ```markdown
 ---
-id: auth-system
-title: Authentication System
-parentId: main
+id: auth-ui
+title: Auth UI
+parentId: auth
 author: mahmoud-a3f9
-createdAt: 2026-04-15T10:00:00Z
-updatedAt: 2026-04-15T12:30:00Z
+createdAt: 2026-04-15T10:00:00.000Z
+updatedAt: 2026-04-15T12:30:00.000Z
+branch: feature/auth-ui
+commit: 3f2a9c1e5b7d4a8f0c6e2b1d9a7f5c3e1b0d8a6f
+paths: ["src/auth"]
 ---
 
-JWT-based authentication with refresh tokens.
-bcrypt for password hashing, salt rounds: 12.
-Passport.js local strategy.
+## Decisions
+- Login form with React Hook Form
+
+## State
+- Registration done, password reset pending
 ```
 
 **Frontmatter fields (ThreadMetadata):**
@@ -93,99 +115,19 @@ Passport.js local strategy.
 | `title` | `string` | Human-readable thread title |
 | `parentId` | `string \| "null"` | Parent thread ID, `"null"` for root |
 | `author` | `string` | Author ID who created this thread |
-| `createdAt` | `string` | ISO 8601 creation timestamp |
+| `createdAt` | `string` | ISO 8601 creation timestamp; orders children in the tree |
 | `updatedAt` | `string` | ISO 8601 last update timestamp |
+| `status` | `"done" \| "abandoned"` | Absent for an active thread |
+| `branch` | `string` | Git branch the thread is linked to |
+| `commit` | `string` | HEAD commit when the summary was last written |
+| `paths` | `string[]` | Files or directories the summary covers, to flag it when they change |
+| `mergedInto` | `string` | Parent the thread was merged into |
 
-**Body:** Markdown summary content (can be empty for new threads).
+The last five fields only appear when set. **Body:** Markdown summary, ideally with the sections `## Decisions`, `## Constraints`, `## State`, `## Open questions`, `## Next steps` (see [Threads](/guide/threads#updating-summaries)).
 
 The file name is authoritative for the thread ID: the `id` field is informative only. Values that YAML could misread (`: `, a leading quote or dash, `null`/`true`/`false`, surrounding spaces) are written as double-quoted JSON strings, which are also valid YAML. The block ends at the first line that is exactly `---`, so titles and summaries may contain `---`.
 
----
-
-### `trees/{project-id}.json` (TreeStructure)
-
-Denormalized index for fast tree traversal:
-
-```json
-{
-  "nodes": {
-    "main": {
-      "parentId": null,
-      "children": ["auth-system", "dashboard"]
-    },
-    "auth-system": {
-      "parentId": "main",
-      "children": ["auth-ui", "auth-api"]
-    },
-    "auth-ui": {
-      "parentId": "auth-system",
-      "children": []
-    },
-    "auth-api": {
-      "parentId": "auth-system",
-      "children": []
-    },
-    "dashboard": {
-      "parentId": "main",
-      "children": []
-    }
-  }
-}
-```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `nodes` | `Record<string, TreeNode>` | Map of thread ID to parent/children |
-| `nodes[id].parentId` | `string \| null` | Parent thread ID |
-| `nodes[id].children` | `string[]` | Ordered list of child thread IDs |
-
-::: info
-The tree file is a **denormalized index** — the same parent-child relationships exist in each thread's frontmatter. If the tree file becomes corrupted or has merge conflicts, it can be regenerated from the thread files.
-:::
-
----
-
-### `stats/{project-id}.json` (ProjectStats)
-
-Token savings statistics, updated automatically on every `summary_update` call:
-
-```json
-{
-  "projectId": "my-app",
-  "threads": {
-    "main": {
-      "updateCount": 4,
-      "firstContentLength": 350,
-      "currentContentLength": 280,
-      "cumulativeInputLength": 1420,
-      "lastUpdatedAt": "2026-04-15T14:30:00Z"
-    },
-    "auth-system": {
-      "updateCount": 3,
-      "firstContentLength": 200,
-      "currentContentLength": 310,
-      "cumulativeInputLength": 890,
-      "lastUpdatedAt": "2026-04-15T16:00:00Z"
-    }
-  }
-}
-```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `projectId` | `string` | Project this stats file belongs to |
-| `threads` | `Record<string, SummaryStats>` | Per-thread statistics |
-| `threads[id].updateCount` | `number` | How many times `summary_update` was called |
-| `threads[id].firstContentLength` | `number` | Character length of the first summary ever written |
-| `threads[id].currentContentLength` | `number` | Character length of the latest summary |
-| `threads[id].cumulativeInputLength` | `number` | Sum of all content lengths ever submitted |
-| `threads[id].lastUpdatedAt` | `string` | ISO 8601 timestamp of last update |
-
-The key metric is the ratio between `cumulativeInputLength` (total text compressed) and `currentContentLength` (current summary size). This measures how much information ThreadMind compresses over time.
-
-::: tip
-Stats files are informational only. If deleted, they rebuild naturally as users continue calling `summary_update`. No data is lost — only historical tracking resets.
-:::
+A thread whose parent file is missing is shown as a root, so it stays visible.
 
 ---
 
@@ -199,7 +141,14 @@ config.json
 *.tmp
 ```
 
-This ensures that per-user state (active project/thread, author ID) stays local while thread files and tree structures are shared via git.
+This ensures that per-user state (active project/thread, author ID, session measurements) stays local while thread files are shared via git.
+
+## Upgrading from 0.4
+
+Earlier versions also wrote:
+
+- `trees/{project-id}.json`, an index duplicating each thread's parent. It was the one actually read, so on first use ThreadMind aligns the thread files on it, then deletes it.
+- `stats/{project-id}.json`, the old estimated statistics. It is no longer read or written, and can be deleted.
 
 ## Atomic Writes
 
@@ -212,7 +161,7 @@ A reader therefore sees either the previous or the new version of a file, never 
 
 ## Concurrency
 
-Operations that read then modify files (creating, moving or deleting threads, updating summaries, switching the active thread) run one at a time: within a process through an in-memory queue, and across processes (several sessions on the same repository) through the `.threadmind/.lock` file. A lock left behind by a crashed process is reclaimed after 10 seconds.
+Operations that read then modify files (creating, moving or deleting threads, updating summaries, recording the active thread) run one at a time: within a process through an in-memory queue, and across processes (several sessions on the same repository, the plugin's hooks) through the `.threadmind/.lock` file. A lock left behind by a crashed process is reclaimed after 10 seconds.
 
 ## ID Generation (Slugification)
 

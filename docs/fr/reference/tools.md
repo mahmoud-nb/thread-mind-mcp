@@ -1,10 +1,12 @@
 # Référence des outils
 
-ThreadMind expose 12 outils MCP. Tous retournent des réponses textuelles structurées et utilisent `isError: true` en cas d'échec.
+ThreadMind expose 14 outils MCP. Tous retournent des réponses textuelles structurées et utilisent `isError: true` en cas d'échec.
 
-Chaque outil déclare un titre et des annotations MCP : `readOnlyHint` pour `project_list`, `thread_list`, `context_get` et `stats_show` ; `destructiveHint` pour `thread_delete` et `summary_update` (qui remplace le résumé précédent). Les clients peuvent s'en servir pour décider quand demander une confirmation.
+Chaque outil déclare un titre et des annotations MCP : `readOnlyHint` pour `project_list`, `thread_list`, `context_get` et `stats_show` ; `destructiveHint` pour `thread_delete`, `summary_update` (qui peut remplacer le résumé précédent) et `thread_merge` (qui remplace le résumé du parent). Les clients peuvent s'en servir pour décider quand demander une confirmation.
 
 Le serveur envoie aussi ses consignes d'utilisation au client à la connexion (instructions de serveur MCP) : un client comme Claude Code n'a besoin d'aucun fichier d'instructions.
+
+Chaque session a son propre projet et son propre thread actifs : voir [Le thread actif](/fr/guide/threads#le-thread-actif).
 
 ## Outils de projet
 
@@ -23,11 +25,9 @@ Crée un nouveau projet ThreadMind avec un thread racine `main`.
 **Retourne :** Confirmation avec l'ID du projet et le mode.
 
 **Effets secondaires :**
-- Crée le fichier de configuration du projet
-- Crée le thread `main`
-- Initialise l'arborescence
+- Crée le fichier de configuration du projet et le thread `main`
 - Génère votre ID auteur (s'il n'existe pas encore)
-- Définit comme projet actif
+- En fait le projet actif de la session, sur `main`
 
 ---
 
@@ -37,11 +37,11 @@ Liste tous les projets ThreadMind.
 
 **Paramètres :** Aucun
 
-**Retourne :** Liste formatée avec titre, ID, mode et marqueur actif.
+**Retourne :** Liste formatée avec titre, ID, mode, et le projet de la session marqué.
 
 **Exemple de sortie :**
 ```
-- Mon App (mon-app) [solo] ← actif
+- Mon App (mon-app) [solo] ← active
 - Projet Perso (projet-perso) [team]
 ```
 
@@ -49,7 +49,7 @@ Liste tous les projets ThreadMind.
 
 ### `project_switch`
 
-Bascule vers un autre projet.
+Fait passer la session sur un autre projet.
 
 **Paramètres :**
 
@@ -57,15 +57,13 @@ Bascule vers un autre projet.
 |-----|------|--------|-------------|
 | `projectId` | `string` | Oui | ID du projet cible |
 
-**Retourne :** Message de confirmation.
+**Retourne :** Confirmation avec le thread actif, choisi comme au démarrage d'une session.
 
-**Effets secondaires :**
-- Met à jour le projet actif
-- Réinitialise le thread actif à `main`
+Inutile dans un dépôt qui n'a qu'un projet : il est sélectionné automatiquement.
 
 ---
 
-## Outils de thread
+## Outils de threads
 
 ### `thread_create`
 
@@ -78,45 +76,95 @@ Crée un nouveau thread enfant à partir d'un parent.
 | `title` | `string` | Oui | Titre du thread (utilisé pour générer l'ID slug) |
 | `parentId` | `string` | Non | ID du thread parent (défaut : thread actif) |
 
-**Retourne :** Confirmation avec l'ID du thread + visualisation de l'arbre.
+**Retourne :** Confirmation avec l'ID du thread, la branche à laquelle il a été lié (le cas échéant) et l'arbre mis à jour.
 
-**Vérification du résumé parent :** après la création, l'outil lit le contenu du thread parent. Si celui-ci n'a pas encore de résumé, un avertissement `⚠️` est ajouté à la réponse, suggérant de lancer `tm:summary` sur le parent avant de continuer. Le thread enfant est toujours créé, indépendamment de cette vérification.
+**Effets secondaires :**
+- Crée le fichier du thread
+- Sur une branche de fonctionnalité sans thread ouvert lié, lie le thread à cette branche
+- En fait le thread actif de la session
+
+**Vérification du résumé parent :** si le parent n'a pas encore de résumé, un avertissement `⚠️` suggère de lancer `tm:summary` dessus. Le thread est créé dans tous les cas.
 
 ---
 
 ### `thread_switch`
 
-Bascule vers un autre thread.
+Fait passer la session sur un autre thread.
 
 **Paramètres :**
 
 | Nom | Type | Requis | Description |
 |-----|------|--------|-------------|
 | `threadId` | `string` | Oui | ID du thread cible |
+| `maxTokens` | `number` | Non | Budget de tokens du contexte renvoyé |
 
 **Retourne :** Confirmation + le contexte assemblé complet du nouveau thread : inutile d'appeler `context_get` ensuite.
 
-**Effets secondaires :**
-- Définit le thread comme thread actif
+Les autres sessions gardent leur thread ; les nouvelles sessions sur la même branche git démarreront sur celui-ci.
 
 ---
 
 ### `thread_list`
 
-Affiche l'arborescence du projet actif.
+Affiche l'arbre des threads du projet de la session.
 
 **Paramètres :** Aucun
 
-**Retourne :** Visualisation ASCII de l'arbre avec le thread actif marqué.
+**Retourne :** Arbre ASCII avec le thread actif, les statuts et les branches liées.
 
 **Exemple de sortie :**
 ```
 main
 ├── auth
-│   ├── auth-ui ← actif
+│   ├── auth-ui [branch: feature/auth-ui] ← active
 │   └── auth-api
+├── graphql [abandoned]
 └── dashboard
 ```
+
+---
+
+### `thread_status`
+
+Marque un thread comme terminé ou abandonné, ou le rouvre.
+
+**Paramètres :**
+
+| Nom | Type | Requis | Description |
+|-----|------|--------|-------------|
+| `status` | `"active"` \| `"done"` \| `"abandoned"` | Oui | Nouveau statut |
+| `threadId` | `string` | Non | ID du thread (défaut : thread actif) |
+| `reason` | `string` | Non | Pourquoi ; ajouté à la section Decisions du thread |
+
+**Retourne :** Confirmation + arbre mis à jour.
+
+**Contraintes :**
+- Le thread `main` ne peut pas être clos
+- En mode équipe, seul l'auteur du thread peut changer son statut
+
+Un thread clos n'est plus lié à sa branche pour les nouvelles sessions.
+
+---
+
+### `thread_merge`
+
+Intègre un thread terminé dans son parent.
+
+**Paramètres :**
+
+| Nom | Type | Requis | Description |
+|-----|------|--------|-------------|
+| `parentSummary` | `string` | Oui | Le nouveau résumé du parent, incluant les conclusions du thread (rédigé par l'IA) |
+| `threadId` | `string` | Non | Thread à intégrer (défaut : thread actif) |
+
+**Retourne :** Confirmation + arbre mis à jour.
+
+**Effets secondaires :**
+- Remplace le résumé du parent par `parentSummary`
+- Marque le thread `done`, avec `mergedInto` égal au parent
+- Fait du parent le thread actif de la session
+
+En mode équipe, il faut être propriétaire du thread et de son parent.
 
 ---
 
@@ -130,85 +178,91 @@ Supprime un thread et tous ses descendants.
 |-----|------|--------|-------------|
 | `threadId` | `string` | Oui | ID du thread à supprimer |
 
-**Retourne :** Confirmation + arborescence mise à jour.
+**Retourne :** Confirmation + arbre mis à jour.
 
 **Contraintes :**
 - Impossible de supprimer le thread `main`
-- En mode équipe, seul l'auteur peut supprimer ses threads
-- Cascade vers tous les descendants
+- En mode équipe, seulement vos propres threads, et pas si un descendant appartient à un collègue
+- Supprime en cascade tous les descendants
+
+Une session dont le thread actif a été supprimé repart comme au démarrage d'une session.
 
 ---
 
 ### `thread_rebase`
 
-Déplace un thread (et tous ses descendants) vers un autre parent. Similaire à `git rebase`.
+Déplace un thread (et tous ses descendants) sous un autre parent. Comme `git rebase`.
 
 **Paramètres :**
 
 | Nom | Type | Requis | Description |
 |-----|------|--------|-------------|
 | `threadId` | `string` | Oui | ID du thread à déplacer |
-| `newParentId` | `string` | Oui | ID du nouveau thread parent |
+| `newParentId` | `string` | Oui | ID du nouveau parent |
 
-**Retourne :** Confirmation + arborescence mise à jour.
+**Retourne :** Confirmation + arbre mis à jour.
 
 **Contraintes :**
 - Impossible de rebaser le thread `main`
-- Impossible de créer des références circulaires (le parent cible ne doit pas être un descendant du thread déplacé)
-- Impossible de rebaser sur soi-même ou le parent actuel
+- Impossible de créer une référence circulaire (le nouveau parent ne doit pas être un descendant du thread déplacé)
+- Impossible de rebaser un thread sur lui-même ou sur son parent actuel
 - En mode équipe, seul l'auteur du thread peut le rebaser
 
-**Effets secondaires :**
-- Retire le thread de la liste des enfants de l'ancien parent
-- Ajoute le thread à la liste des enfants du nouveau parent
-- Met à jour `parentId` dans l'arborescence et le frontmatter du thread
-- Met à jour le timestamp `updatedAt` du thread déplacé
+**Effets secondaires :** met à jour `parentId` et `updatedAt` dans le frontmatter du thread ; les descendants suivent.
 
 ---
 
-## Outils de résumé et contexte
+## Outils de résumé et de contexte
 
 ### `summary_update`
 
-Met à jour le résumé d'un thread.
+Met à jour le résumé d'un thread, ou l'une de ses sections.
 
 **Paramètres :**
 
 | Nom | Type | Requis | Description |
 |-----|------|--------|-------------|
-| `content` | `string` | Oui | Nouveau contenu du résumé (markdown) |
+| `content` | `string` | Oui | Nouveau résumé, ou texte à ajouter à `section` (Markdown) |
 | `threadId` | `string` | Non | Thread à mettre à jour (défaut : thread actif) |
+| `section` | `string` | Non | Ne mettre à jour que cette section : `decisions`, `constraints`, `state`, `open-questions` ou `next-steps` |
+| `replaceSection` | `boolean` | Non | Remplacer la section au lieu de la compléter (pour `state` et `next-steps`) |
+| `paths` | `string[]` | Non | Fichiers ou dossiers dont parle le thread ; une liste vide les efface |
 
 **Retourne :** Confirmation avec l'ID du thread.
 
 **Contraintes :**
-- En mode équipe, seul l'auteur peut modifier ses threads
+- En mode équipe, seulement vos propres threads
 
 **Effets secondaires :**
-- Écrase le contenu du thread avec le nouveau résumé
-- Met à jour le timestamp `updatedAt`
-- Enregistre la mise à jour dans les statistiques d'économie de tokens
+- Sans `section`, remplace tout le résumé ; avec, complète (ou remplace) seulement cette section, en la créant à sa place si elle manque
+- Enregistre le commit git courant, qui sert à signaler le résumé quand ses `paths` changent
+- Met à jour `updatedAt`
 
 ---
 
 ### `context_get`
 
-Récupère le contexte assemblé complet pour le thread actif.
+Renvoie le contexte assemblé du thread actif de la session.
 
-**Paramètres :** Aucun
+**Paramètres :**
 
-**Retourne :** Le contexte assemblé — contexte système + résumés des ancêtres de la racine au thread actif, avec un pied de page d'estimation de tokens :
+| Nom | Type | Requis | Description |
+|-----|------|--------|-------------|
+| `maxTokens` | `number` | Non | Budget de tokens : les ancêtres les plus lointains sont retirés en premier |
+
+**Retourne :** Le contexte système, les sections durables (Decisions, Constraints) des résumés des ancêtres et tout le résumé du thread actif, avec un pied de page :
 
 ```
-ThreadMind context: ~450 tokens | depth: 3 threads
+_ThreadMind context: ~450 tokens | depth: 3 threads_
 ```
 
 **Algorithme :**
 1. Remonter du thread actif à la racine via `parentId`
 2. Inverser la chaîne (racine → actif)
-3. Concaténer contexte système + résumés
-4. Ignorer les threads au contenu vide
-5. Estimer le nombre de tokens (~1 token pour 3,5 caractères)
+3. Garder les Decisions et Constraints des ancêtres (les résumés libres en entier) et tout le résumé du thread actif ; ignorer les résumés vides
+4. Ajouter un avertissement sous les résumés dont les `paths` ont changé depuis leur écriture
+5. Retirer les ancêtres les plus lointains pour respecter `maxTokens`
+6. Estimer le nombre de tokens (~1 token pour 3,5 caractères)
 
 Voir [Assemblage du contexte](/fr/guide/context-assembly) pour les détails.
 
@@ -240,9 +294,10 @@ Voir [Assemblage du contexte](/fr/guide/context-assembly) pour les détails.
 Dans les fichiers Markdown, la section ThreadMind est placée entre les marqueurs `<!-- threadmind:start -->` et `<!-- threadmind:end -->` : le reste du fichier est préservé. Le fichier de règle Cursor est entièrement généré.
 
 Les instructions demandent à l'IA de :
-- Appeler `context_get` une fois au début d'une session
-- Appeler `summary_update` après une décision ou une tâche terminée, en gardant ce qui reste vrai
+- Appeler `context_get` une fois au début d'une session, sauf si le contexte a déjà été chargé
+- Structurer les résumés en sections, et compléter une section avec `summary_update` après une décision ou une tâche terminée
 - Utiliser `thread_list`, puis `thread_switch` ou `thread_create`, quand le sujet change
+- Clore les threads terminés avec `thread_merge` ou `thread_status`
 - Exécuter les raccourcis `tm:` tapés par l'utilisateur
 
 **Migration :** les versions précédentes écrivaient `CLAUDE.md` et `.cursorrules`. En générant la règle Cursor, `threadmind_init` retire la section ThreadMind de `.cursorrules` (et supprime le fichier s'il ne contient plus rien). Une section ThreadMind restée dans un fichier non ciblé est signalée, pas modifiée.
@@ -262,7 +317,7 @@ Ces prompts intègrent directement leur résultat dans le message, sans appel d'
 | `tm-help` | Référence des commandes, projet et thread actifs | Aucun |
 | `tm-context` | Contexte assemblé du thread actif | Aucun |
 | `tm-tree` | Arbre des threads du projet actif | Aucun |
-| `tm-stats` | Statistiques d'économie de tokens | Aucun |
+| `tm-stats` | Tailles des résumés et tailles de conversation mesurées | Aucun |
 
 ### Prompts qui modifient l'état
 
@@ -276,7 +331,7 @@ Ces prompts demandent à l'IA d'appeler l'outil correspondant : les réglages de
 | `tm-summary` | `summary_update` | `content` (optionnel — l'IA rédige le résumé s'il est omis), `topic` (indication optionnelle) |
 | `tm-init` | `threadmind_init` | Aucun |
 
-Sans `content`, `tm-summary` fournit à l'IA le résumé actuel et un modèle (décisions et raisons, choix techniques, état actuel, questions ouvertes).
+Sans `content`, `tm-summary` fournit à l'IA le résumé actuel et le modèle de sections.
 
 ### Alias de compatibilité
 
@@ -285,7 +340,7 @@ Sans `content`, `tm-summary` fournit à l'IA le résumé actuel et un modèle (d
 | `start-thread` | `tm-context` |
 | `summarize-thread` | `tm-summary` sans `content` (accepte un `topic` optionnel) |
 
-Dans Claude Code, ils apparaissent comme `/mcp__thread-mind__tm-help`, `/mcp__thread-mind__tm-create`, etc.
+Dans Claude Code, ils apparaissent comme `/mcp__thread-mind__tm-help`, `/mcp__thread-mind__tm-create`, etc. Le [plugin Claude Code](/fr/guide/claude-code-plugin) ajoute des commandes plus courtes `/thread-mind:*`.
 
 ### Raccourcis texte (commandes `tm:`)
 
@@ -298,8 +353,11 @@ tm:tree                → thread_list
 tm:create Auth System  → thread_create(title: "Auth System")
 tm:switch auth-ui      → thread_switch(threadId: "auth-ui")
 tm:rebase auth-ui dashboard → thread_rebase(threadId: "auth-ui", newParentId: "dashboard")
-tm:summary             → Auto-générer + sauvegarder le résumé
+tm:summary             → Rédiger + sauvegarder le résumé
 tm:summary <contenu>   → summary_update(content: ...)
+tm:merge               → thread_merge (l'IA rédige le nouveau résumé du parent)
+tm:done [raison]       → thread_status(status: "done")
+tm:abandon <raison>    → thread_status(status: "abandoned")
 tm:stats               → stats_show
 tm:delete auth-api     → thread_delete(threadId: "auth-api")
 tm:init                → threadmind_init
@@ -315,43 +373,31 @@ Ces raccourcis fonctionnent dans tout client IA qui lit les instructions de serv
 
 ### `stats_show`
 
-Affiche les statistiques d'économie de tokens pour le projet ThreadMind actif.
+Affiche l'état des résumés du projet et, avec le plugin Claude Code, la taille réelle atteinte par les conversations.
 
 **Paramètres :** Aucun
-
-**Retourne :** Un rapport formaté contenant :
-- Vue d'ensemble : nombre de threads, mises à jour de résumés, taille du contexte actuel
-- Économies de tokens : historique brut estimé vs contexte ThreadMind, ratio de compression
-- Détail par thread : mises à jour, tokens actuels, input cumulé, ratio
 
 **Exemple de sortie :**
 ```
 ThreadMind Stats: "Mon Projet"
 
-Overview:
-  Threads: 5 (3 with tracked updates)
-  Summary updates: 12
-  Current context: ~450 tokens (depth: 3)
+Threads: 7 (5 active, 1 done, 1 abandoned)
+Active thread: auth-ui (depth 3, ~450 tokens of context)
 
-Token Savings (estimated):
-  Estimated raw history: ~12,000 tokens
-  ThreadMind context:    ~450 tokens
-  Reduction:             ~96%
+Summaries:
+  Thread                   Tokens   Updated
+  main                     ~120     2026-09-20
+  auth                     ~90      2026-09-25
+  auth-ui                  ~140     2026-09-27
 
-Per-Thread Breakdown:
-  Thread               Updates  Current   Cumulative    Ratio
-  main                 4        ~120      ~3400         96%
-  auth-system          3        ~90       ~2800         97%
+Measured sessions (Claude Code plugin):
+  Conversation size when sessions ended: ~48,200 tokens on average, ~96,000 at most (12 sessions)
+  ThreadMind context loaded at session start: ~1,150 tokens on average (14 sessions)
 
-Method: Cumulative summary input vs current context size.
-Token estimates use ~3.5 chars/token approximation.
+Summary and context sizes are estimates (~3.5 characters per token); conversation sizes come from the Claude Code transcripts.
 ```
 
-**Fonctionnement :** Chaque appel à `summary_update` est tracké. L'input cumulé représente le texte total compressé en résumés au fil du temps. Le ratio compare cet input cumulé au contexte assemblé actuel — montrant la compression réalisée par ThreadMind.
-
-::: info
-Les estimations de tokens sont approximatives (~3,5 caractères/token). Le protocole MCP ne permet pas d'accéder à la consommation réelle de tokens du modèle. Toutes les métriques sont dérivées du texte que ThreadMind stocke et sert.
-:::
+Sans le plugin, la partie mesurée explique comment obtenir des mesures. Les tailles de conversation sont lues dans les données d'usage des transcripts par le hook `SessionEnd` du plugin ; voir [Plugin Claude Code](/fr/guide/claude-code-plugin#des-statistiques-mesurees).
 
 ---
 
@@ -361,7 +407,7 @@ Tous les outils suivent le même schéma d'erreur :
 
 ```json
 {
-  "content": [{ "type": "text", "text": "Error: No active project. Use project_create first." }],
+  "content": [{ "type": "text", "text": "Error: No ThreadMind project in this workspace. Only create one (project_create) if the user asks for it." }],
   "isError": true
 }
 ```
@@ -369,11 +415,11 @@ Tous les outils suivent le même schéma d'erreur :
 Les IDs de threads et de projets n'acceptent que des lettres minuscules, des chiffres et des tirets. Toute autre valeur (y compris un chemin comme `../`) est refusée avant l'exécution de l'outil, avec une `Input validation error`.
 
 Erreurs courantes :
-- `"No active project. Use project_create first."` — aucun projet sélectionné
-- `"Thread \"x\" not found"` — le thread n'est pas dans l'arbre du projet actif
+- `"No ThreadMind project in this workspace…"` — aucun projet pour l'instant
+- `"No active project. Existing projects: … Use project_switch to select one."` — plusieurs projets, aucun sélectionné
+- `"Thread \"x\" not found"` — le thread n'existe pas dans le projet
 - `"Parent thread \"x\" not found"` — parent invalide lors de la création
-- `"Cannot delete the main thread"` — tentative de suppression de la racine
-- `"Cannot rebase the main thread"` — tentative de rebase de la racine
+- `"Cannot delete the main thread"`, `"Cannot rebase the main thread"`, `"The main thread cannot be closed"`
 - `"\"x\" is a descendant of \"y\""` — référence circulaire détectée lors du rebase
 - `"Cannot update thread \"x\": owned by \"y\""` — violation de propriété en mode équipe
 - `"... its descendants include threads owned by others"` — suppression en mode équipe qui entraînerait en cascade des threads d'un collègue

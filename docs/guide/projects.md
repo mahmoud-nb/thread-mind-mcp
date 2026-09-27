@@ -14,9 +14,8 @@ This will:
 1. Generate a project ID from the title (`"My App"` → `"my-app"`)
 2. Create the project configuration file
 3. Create a root `main` thread
-4. Initialize the thread tree
-5. Generate your author ID if you don't have one yet (from `git config user.name` + a short hash of `git config user.email`)
-6. Set this project as active
+4. Generate your author ID if you don't have one yet (from `git config user.name` + a short hash of `git config user.email`)
+5. Make it the session's active project
 
 ### Parameters
 
@@ -60,7 +59,9 @@ Returns all projects with their mode and highlights the active one:
 project_switch(projectId: "side-project")
 ```
 
-Switches the active project and resets the active thread to `main`.
+Switches the session's project. Its active thread is chosen as when a session starts: the last one used on the checked-out branch, the thread linked to that branch, or `main` (see [Threads](/guide/threads#the-active-thread)).
+
+When a repository has a single project, it is selected automatically — for example in a fresh clone.
 
 ## Project Modes
 
@@ -85,11 +86,7 @@ Each project creates:
   threads/
     my-app/
       main.md             # Root thread
-      ...                 # Other threads
-  trees/
-    my-app.json           # Tree structure
-  stats/
-    my-app.json           # Token savings statistics
+      ...                 # Other threads (each one records its parent)
 ```
 
 ## ID Generation

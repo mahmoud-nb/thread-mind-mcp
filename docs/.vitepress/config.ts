@@ -3,7 +3,7 @@ import { defineConfig } from "vitepress";
 export default defineConfig({
   title: "ThreadMind MCP",
   description:
-    "Organize AI conversations into thread trees. Think less tokens, think more.",
+    "Git-friendly memory for AI coding sessions: a tree of thread summaries with inherited context.",
 
   // GitHub Pages deploys to /<repo-name>/
   // Update this to match your repository name
@@ -18,7 +18,7 @@ export default defineConfig({
       {
         property: "og:description",
         content:
-          "Organize AI conversations into thread trees. Reduce token consumption.",
+          "Git-friendly memory for AI coding sessions: a tree of thread summaries with inherited context.",
       },
     ],
   ],
@@ -62,6 +62,7 @@ export default defineConfig({
               items: [
                 { text: "What is ThreadMind?", link: "/guide/what-is-threadmind" },
                 { text: "Getting Started", link: "/guide/getting-started" },
+                { text: "Claude Code Plugin", link: "/guide/claude-code-plugin" },
               ],
             },
             {
@@ -112,6 +113,7 @@ export default defineConfig({
                   link: "/fr/guide/what-is-threadmind",
                 },
                 { text: "D\u00e9marrage rapide", link: "/fr/guide/getting-started" },
+                { text: "Plugin Claude Code", link: "/fr/guide/claude-code-plugin" },
               ],
             },
             {
