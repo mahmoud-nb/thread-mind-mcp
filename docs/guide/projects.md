@@ -15,7 +15,7 @@ This will:
 2. Create the project configuration file
 3. Create a root `main` thread
 4. Initialize the thread tree
-5. Generate your unique author ID (from `git config user.name` + short UUID)
+5. Generate your author ID if you don't have one yet (from `git config user.name` + a short hash of `git config user.email`)
 6. Set this project as active
 
 ### Parameters

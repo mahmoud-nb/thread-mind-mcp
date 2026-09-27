@@ -61,7 +61,7 @@ Thread IDs follow the same slugification rules as projects:
 | `"Auth System"` | `auth-system` |
 | `"API v2 Routes"` | `api-v2-routes` |
 
-Duplicates get numeric suffixes: `auth-system-2`.
+Duplicates get numeric suffixes: `auth-system-2`. Accents are stripped (`"Système"` → `systeme`); titles without any Latin letter or digit get the ID `thread` (then `thread-2`…). In `thread_list`, the title is shown next to IDs that don't reflect it, e.g. `thread — 认证模块`.
 
 ## Switching Threads
 

@@ -7,6 +7,7 @@ ThreadMind utilise un stockage basé sur des fichiers dans un dossier `.threadmi
 ```
 .threadmind/
   .gitignore              # Exclut config.json du contrôle de version
+  .lock                   # Verrou transitoire, présent seulement pendant une écriture
   config.json             # État local utilisateur (gitignoré)
   projects/
     {project-id}.json     # Configuration du projet
@@ -38,7 +39,7 @@ ThreadMind utilise un stockage basé sur des fichiers dans un dossier `.threadmi
 |-------|------|-------------|
 | `activeProjectId` | `string \| null` | Projet actuellement sélectionné |
 | `activeThreadId` | `string \| null` | Thread actuellement sélectionné |
-| `author` | `string` | ID auteur unique (`{nom_git}-{uuid}`) |
+| `author` | `string` | ID auteur (`{nom_git}-{4 caractères hexa dérivés de git user.email}`), créé à la première écriture |
 | `version` | `number` | Version du schéma pour les migrations |
 
 ---
@@ -96,6 +97,8 @@ Stratégie locale Passport.js.
 | `updatedAt` | `string` | Horodatage ISO 8601 de dernière mise à jour |
 
 **Corps :** Contenu du résumé en Markdown (peut être vide pour les nouveaux threads).
+
+C'est le nom du fichier qui fait foi pour l'ID du thread : le champ `id` n'est qu'informatif. Les valeurs que YAML pourrait mal interpréter (`: `, guillemet ou tiret initial, `null`/`true`/`false`, espaces en bordure) sont écrites comme des chaînes JSON entre guillemets doubles, qui sont aussi du YAML valide. Le bloc se termine à la première ligne contenant exactement `---` : titres et résumés peuvent donc contenir `---`.
 
 ---
 
@@ -192,6 +195,8 @@ Créé automatiquement dans `.threadmind/` :
 
 ```
 config.json
+.lock
+*.tmp
 ```
 
 Cela garantit que l'état par utilisateur (projet/thread actif, ID auteur) reste local tandis que les fichiers de threads et les structures d'arbre sont partagés via git.
@@ -199,29 +204,37 @@ Cela garantit que l'état par utilisateur (projet/thread actif, ID auteur) reste
 ## Écritures atomiques
 
 Toutes les écritures de fichiers utilisent un modèle atomique :
-1. Écriture dans un fichier temporaire (`{chemin}.{uuid}.tmp`)
-2. Écriture au chemin final
-3. Suppression du fichier temporaire
+1. Écriture dans un fichier temporaire (`{chemin}.{uuid}.tmp`), vidé sur le disque
+2. Renommage du fichier temporaire vers le chemin final (sous Windows, avec quelques nouvelles tentatives si un autre processus tient le fichier)
+3. En cas d'échec, suppression du fichier temporaire
 
-Cela évite la corruption si le processus est interrompu en cours d'écriture.
+Un lecteur voit donc soit l'ancienne, soit la nouvelle version d'un fichier, jamais une version partielle, même si le processus est interrompu en cours d'écriture.
+
+## Concurrence
+
+Les opérations qui lisent puis modifient des fichiers (création, déplacement ou suppression de threads, mise à jour de résumé, changement de thread actif) s'exécutent une par une : dans un processus via une file d'attente en mémoire, et entre processus (plusieurs sessions sur le même dépôt) via le fichier `.threadmind/.lock`. Un verrou laissé par un processus planté est récupéré au bout de 10 secondes.
 
 ## Génération d'ID (slugification)
 
 Les IDs de projets et threads sont générés par slugification des titres :
 
 ```
-Entrée                      → Sortie
-"Mon App"                  → "mon-app"
-"Système Auth v2"          → "systeme-auth-v2"
-"API (REST)"               → "api-rest"
-"  Espaces & Symboles!! "  → "espaces--symboles"
+Entrée                          → Sortie
+"Mon App"                       → "mon-app"
+"Système Auth v2"               → "systeme-auth-v2"
+"API (REST)"                    → "api-rest"
+"  Espaces & Symboles!! "       → "espaces-symboles"
+"Cœur métier"                   → "coeur-metier"
+"认证模块"                        → "thread" (ou "project")
 ```
 
 Règles :
-1. Mise en minuscules
+1. Suppression des accents (`é` → `e`, `œ` → `oe`) et mise en minuscules
 2. Remplacement des espaces/underscores par des tirets
-3. Suppression des caractères non alphanumériques (sauf tirets)
-4. Fusion des tirets multiples
-5. Suppression des tirets en début/fin
+3. Suppression des caractères autres que `a-z`, `0-9` et tirets
+4. Fusion des tirets multiples, suppression des tirets en début/fin, 64 caractères maximum
+5. S'il ne reste rien, utilisation de `thread` (ou `project`)
 
-En cas de collision, ajout de `-2`, `-3`, etc.
+En cas de collision, ajout de `-2`, `-3`, etc. Les sauts de ligne dans les titres sont remplacés par des espaces.
+
+Les IDs sont limités aux lettres minuscules, chiffres et tirets : les outils refusent tout autre ID, ce qui exclut aussi les chemins du type `../`.

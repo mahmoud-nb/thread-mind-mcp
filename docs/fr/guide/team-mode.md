@@ -30,22 +30,24 @@ git push
 
 ```bash
 git pull
-# ThreadMind détecte automatiquement le projet
-# Chaque collègue reçoit son propre ID auteur à la première utilisation
+# Sélectionner le projet partagé : project_switch(projectId: "notre-app")
+# Votre ID auteur est créé lors de votre première écriture
 ```
 
 ## Identité de l'auteur
 
-À la création d'un projet, ThreadMind génère un identifiant auteur unique :
+Lors de votre première écriture (création d'un thread, mise à jour d'un résumé…), ThreadMind dérive votre identifiant auteur de votre identité git :
 
 ```
-{git_user_name}-{uuid_4_caractères}
+{git_user_name}-{4 caractères hexa dérivés de git user.email}
 ```
 
 Exemples :
 - `mahmoud-a3f9`
 - `sarah-7b2c`
 - `dev-e4d1`
+
+Comme il provient de `git config user.email`, vous obtenez le même ID sur chaque clone et chaque machine, et vous restez propriétaire de vos threads après un nouveau clone. Sans email git, un suffixe aléatoire est utilisé. Pour choisir l'ID explicitement, définissez `THREADMIND_AUTHOR` dans le `env` de la configuration du serveur MCP.
 
 Cet ID est stocké dans `.threadmind/config.json`, qui est **gitignoré** — chaque membre a sa propre identité locale.
 
@@ -60,6 +62,12 @@ Cet ID est stocké dans `.threadmind/config.json`, qui est **gitignoré** — ch
 | Basculer vers | Oui | Oui |
 
 Le principe clé : **vous pouvez toujours lire et brancher depuis le travail de n'importe qui, mais vous ne pouvez modifier que le vôtre**.
+
+Supprimer un thread supprime aussi ses descendants : la suppression est donc refusée si l'un d'eux appartient à un collègue.
+
+::: warning
+La propriété évite les modifications accidentelles ; ce n'est pas un contrôle d'accès. Toute personne ayant accès en écriture au dépôt peut modifier les fichiers directement ou définir `THREADMIND_AUTHOR`.
+:::
 
 ## Workflow quotidien
 

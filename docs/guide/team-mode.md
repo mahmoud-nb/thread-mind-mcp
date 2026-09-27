@@ -30,22 +30,24 @@ git push
 
 ```bash
 git pull
-# ThreadMind auto-detects the project
-# Each teammate gets their own author ID on first use
+# Select the shared project: project_switch(projectId: "our-app")
+# Your author ID is created on your first write
 ```
 
 ## Author Identity
 
-When a project is created, ThreadMind generates a unique author ID:
+On your first write (creating a thread, updating a summary…), ThreadMind derives your author ID from your git identity:
 
 ```
-{git_user_name}-{4_char_uuid}
+{git_user_name}-{4 hex chars derived from git user.email}
 ```
 
 Examples:
 - `mahmoud-a3f9`
 - `sarah-7b2c`
 - `dev-e4d1`
+
+Because it comes from `git config user.email`, you get the same ID on every clone and machine, and keep ownership of your threads after a fresh clone. Without a git email, a random suffix is used. To choose the ID explicitly, set `THREADMIND_AUTHOR` in the `env` of the MCP server configuration.
 
 This ID is stored in `.threadmind/config.json`, which is **gitignored** — each team member has their own local identity.
 
@@ -60,6 +62,12 @@ This ID is stored in `.threadmind/config.json`, which is **gitignored** — each
 | Switch to | Yes | Yes |
 
 The key principle: **you can always read and branch from anyone's work, but only modify your own**.
+
+Deleting a thread also deletes its descendants, so the deletion is refused if any descendant belongs to a teammate.
+
+::: warning
+Ownership prevents accidental edits; it is not access control. Anyone with write access to the repository can edit the files directly or set `THREADMIND_AUTHOR`.
+:::
 
 ## Workflow
 

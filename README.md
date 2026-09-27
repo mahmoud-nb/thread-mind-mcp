@@ -415,7 +415,7 @@ Team mode enables collaborative thread trees shared via git.
    project_create with title "Shared Project" and mode "team"
    ```
 
-2. Each team member gets a unique author ID (auto-generated from `git config user.name`)
+2. Each team member gets an author ID on their first write, derived from `git config user.name` and a short hash of `git config user.email` (stable across clones; override it with the `THREADMIND_AUTHOR` environment variable)
 
 3. Thread files (`.threadmind/threads/`) and tree structure (`.threadmind/trees/`) are **tracked by git**
 
@@ -535,6 +535,8 @@ src/
     index.ts            # All TypeScript interfaces
   core/
     frontmatter.ts      # YAML frontmatter parser/serializer (zero deps)
+    ids.ts              # ID validation, slugification, title normalization
+    lock.ts             # Cross-process lock file
     storage.ts          # File I/O layer with atomic writes
     project.ts          # Project lifecycle management
     thread.ts           # Thread CRUD, tree operations, ASCII rendering
@@ -554,8 +556,9 @@ src/
 - **File-based storage over SQLite** — git-friendly, human-readable, zero native dependencies
 - **YAML frontmatter** — thread metadata and content in a single `.md` file, readable by both humans and tools
 - **No external YAML parser** — minimal hand-rolled parser for the simple flat frontmatter format
-- **Atomic writes** — write to temp file first, prevents corruption on crash
-- **Slugified IDs** — thread IDs derived from titles (`"Auth System"` → `"auth-system"`), collision-safe with auto-suffix
+- **Atomic writes** — write to a temp file, flush it, then rename it over the target, so a crash never leaves a partial file
+- **Serialized updates** — read-modify-write operations run one at a time, across sessions too, through a lock file
+- **Slugified IDs** — thread IDs derived from titles (`"Auth System"` → `"auth-system"`), collision-safe with auto-suffix, restricted to `a-z`, `0-9` and `-` (which also rules out path traversal)
 - **MCP Prompts** — structured templates (`start-thread`, `summarize-thread`) to guide AI clients
 - **Multi-client instructions** — auto-generated CLAUDE.md / .cursorrules for seamless integration
 - **Token estimation** — approximate token count reported with every context assembly

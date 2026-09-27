@@ -15,7 +15,7 @@ Cela va :
 2. Créer le fichier de configuration du projet
 3. Créer le thread racine `main`
 4. Initialiser l'arborescence
-5. Générer votre identifiant auteur unique (depuis `git config user.name` + UUID court)
+5. Générer votre identifiant auteur si vous n'en avez pas encore (depuis `git config user.name` + un hash court de `git config user.email`)
 6. Définir ce projet comme actif
 
 ### Paramètres

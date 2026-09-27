@@ -61,7 +61,7 @@ Les IDs suivent les mêmes règles de slugification que les projets :
 | `"Système Auth"` | `systeme-auth` |
 | `"Routes API v2"` | `routes-api-v2` |
 
-Les doublons reçoivent des suffixes numériques : `systeme-auth-2`.
+Les doublons reçoivent des suffixes numériques : `systeme-auth-2`. Les accents sont retirés (`"Système"` → `systeme`) ; un titre sans aucune lettre latine ni chiffre reçoit l'ID `thread` (puis `thread-2`…). Dans `thread_list`, le titre est affiché à côté des IDs qui ne le reflètent pas, par exemple `thread — 认证模块`.
 
 ## Changer de thread
 

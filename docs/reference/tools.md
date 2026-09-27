@@ -22,7 +22,7 @@ Create a new ThreadMind project with a root `main` thread.
 - Creates project config file
 - Creates `main` thread
 - Initializes thread tree
-- Generates author ID (if first project)
+- Generates your author ID (if not set yet)
 - Sets as active project
 
 ---
@@ -375,11 +375,14 @@ All tools follow the same error pattern:
 }
 ```
 
+Thread and project IDs only accept lowercase letters, digits and hyphens. Any other value (including paths such as `../`) is rejected before the tool runs, with an `Input validation error`.
+
 Common errors:
 - `"No active project. Use project_create first."` — no project selected
-- `"Thread \"x\" not found"` — invalid thread ID
+- `"Thread \"x\" not found"` — the thread is not in the active project's tree
 - `"Parent thread \"x\" not found"` — invalid parent for thread creation
 - `"Cannot delete the main thread"` — attempted to delete root
 - `"Cannot rebase the main thread"` — attempted to rebase root
 - `"\"x\" is a descendant of \"y\""` — circular reference detected during rebase
 - `"Cannot update thread \"x\": owned by \"y\""` — ownership violation in team mode
+- `"... its descendants include threads owned by others"` — team mode deletion that would cascade to a teammate's threads

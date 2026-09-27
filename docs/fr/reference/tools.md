@@ -22,7 +22,7 @@ Crée un nouveau projet ThreadMind avec un thread racine `main`.
 - Crée le fichier de configuration du projet
 - Crée le thread `main`
 - Initialise l'arborescence
-- Génère l'ID auteur (si premier projet)
+- Génère votre ID auteur (s'il n'existe pas encore)
 - Définit comme projet actif
 
 ---
@@ -365,11 +365,14 @@ Tous les outils suivent le même schéma d'erreur :
 }
 ```
 
+Les IDs de threads et de projets n'acceptent que des lettres minuscules, des chiffres et des tirets. Toute autre valeur (y compris un chemin comme `../`) est refusée avant l'exécution de l'outil, avec une `Input validation error`.
+
 Erreurs courantes :
 - `"No active project. Use project_create first."` — aucun projet sélectionné
-- `"Thread \"x\" not found"` — ID de thread invalide
+- `"Thread \"x\" not found"` — le thread n'est pas dans l'arbre du projet actif
 - `"Parent thread \"x\" not found"` — parent invalide lors de la création
 - `"Cannot delete the main thread"` — tentative de suppression de la racine
 - `"Cannot rebase the main thread"` — tentative de rebase de la racine
 - `"\"x\" is a descendant of \"y\""` — référence circulaire détectée lors du rebase
 - `"Cannot update thread \"x\": owned by \"y\""` — violation de propriété en mode équipe
+- `"... its descendants include threads owned by others"` — suppression en mode équipe qui entraînerait en cascade des threads d'un collègue
