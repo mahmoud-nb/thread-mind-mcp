@@ -70,6 +70,7 @@ export interface Services {
 // Service interfaces for dependency injection
 export interface StorageService {
   ensureInitialized(): Promise<void>;
+  withLock<T>(fn: () => Promise<T>): Promise<T>;
   readConfig(): Promise<AppState>;
   writeConfig(state: AppState): Promise<void>;
   readProjectConfig(projectId: string): Promise<ProjectConfig>;
@@ -95,6 +96,7 @@ export interface ProjectService {
   list(): Promise<ProjectConfig[]>;
   switch(projectId: string): Promise<void>;
   getActive(): Promise<ProjectConfig | null>;
+  resolveAuthor(): Promise<string>;
 }
 
 export interface ThreadService {

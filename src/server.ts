@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StorageServiceImpl } from "./core/storage.js";
 import { ProjectServiceImpl } from "./core/project.js";
@@ -8,6 +9,11 @@ import { registerTools } from "./tools/index.js";
 import { registerResources } from "./resources/index.js";
 import { registerPrompts } from "./prompts/index.js";
 import type { Services } from "./types/index.js";
+
+// Resolves to the package root from both src/ (dev, tests) and dist/ (published)
+const { version } = createRequire(import.meta.url)("../package.json") as {
+  version: string;
+};
 
 export function createServer(basePath?: string): {
   server: McpServer;
@@ -23,7 +29,7 @@ export function createServer(basePath?: string): {
 
   const server = new McpServer({
     name: "thread-mind",
-    version: "0.2.0",
+    version,
   });
 
   registerTools(server, services);

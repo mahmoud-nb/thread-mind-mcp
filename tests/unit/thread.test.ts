@@ -134,6 +134,109 @@ describe("ThreadService", () => {
       expect(result).toContain("branch-a");
       expect(result).toContain("branch-b");
     });
+
+    it("renders nested levels with connectors", async () => {
+      const create = (title: string, parentId: string) =>
+        threadService.create({ projectId: "proj", parentId, title, author: "test-user" });
+
+      await create("Auth", "main");
+      await create("Auth UI", "auth");
+      await create("Auth API", "auth");
+      await create("Dashboard", "main");
+      await create("Charts", "dashboard");
+      await threadService.switch("proj", "auth-ui");
+
+      expect(await threadService.list("proj")).toBe(
+        [
+          "main",
+          "├── auth",
+          "│   ├── auth-ui ← active",
+          "│   └── auth-api",
+          "└── dashboard",
+          "    └── charts",
+        ].join("\n")
+      );
+    });
+
+    it("shows the title when the ID does not convey it", async () => {
+      const create = (title: string) =>
+        threadService.create({ projectId: "proj", parentId: "main", title, author: "test-user" });
+
+      await create("Feature");
+      await create("Feature");
+      await create("认证模块");
+
+      expect(await threadService.list("proj")).toBe(
+        [
+          "main",
+          "├── feature",
+          "├── feature-2 — Feature",
+          "└── thread — 认证模块 ← active",
+        ].join("\n")
+      );
+    });
+  });
+
+  describe("create (robustness)", () => {
+    it("falls back to a readable ID for titles without Latin letters", async () => {
+      const first = await threadService.create({
+        projectId: "proj", parentId: "main", title: "认证模块", author: "test-user",
+      });
+      const second = await threadService.create({
+        projectId: "proj", parentId: "main", title: "مصادقة", author: "test-user",
+      });
+
+      expect(first.metadata.id).toBe("thread");
+      expect(second.metadata.id).toBe("thread-2");
+      expect((await storage.readThread("proj", "thread-2")).metadata.title).toBe("مصادقة");
+    });
+
+    it("keeps multi-line titles on a single line", async () => {
+      const node = await threadService.create({
+        projectId: "proj",
+        parentId: "main",
+        title: "Innocent\nid: ../../../PWNED",
+        author: "test-user",
+      });
+
+      expect(node.metadata.id).toBe("innocent-id-pwned");
+      const read = await storage.readThread("proj", node.metadata.id);
+      expect(read.metadata.title).toBe("Innocent id: ../../../PWNED");
+      expect(read.metadata.parentId).toBe("main");
+    });
+
+    it("keeps every thread when creations run in parallel", async () => {
+      const titles = ["A", "B", "C", "D", "E", "F"];
+      await Promise.all(
+        titles.map((title) =>
+          threadService.create({ projectId: "proj", parentId: "main", title, author: "test-user" })
+        )
+      );
+
+      const tree = await storage.readTree("proj");
+      expect([...tree.nodes["main"].children].sort()).toEqual(["a", "b", "c", "d", "e", "f"]);
+    });
+
+    it("never overwrites a thread file that is missing from the tree", async () => {
+      await storage.writeThread("proj", {
+        metadata: {
+          id: "orphan",
+          title: "Orphan",
+          parentId: "main",
+          author: "test-user",
+          createdAt: "",
+          updatedAt: "",
+        },
+        content: "Precious summary.",
+      });
+
+      const node = await threadService.create({
+        projectId: "proj", parentId: "main", title: "Orphan", author: "test-user",
+      });
+
+      expect(node.metadata.id).toBe("orphan-2");
+      expect((await storage.readThread("proj", "orphan")).content).toBe("Precious summary.");
+    });
   });
 
   describe("updateSummary", () => {
@@ -160,6 +263,40 @@ describe("ThreadService", () => {
           mode: "team",
         })
       ).rejects.toThrow("Cannot update thread");
+    });
+
+    it("rejects threads that are not in the tree", async () => {
+      await expect(
+        threadService.updateSummary({
+          projectId: "proj",
+          threadId: "ghost",
+          content: "x",
+          author: "test-user",
+          mode: "solo",
+        })
+      ).rejects.toThrow('Thread "ghost" not found');
+    });
+
+    it("lets the owner update a thread whose title contains ---", async () => {
+      const node = await threadService.create({
+        projectId: "proj",
+        parentId: "main",
+        title: "Refactor --- phase 2",
+        author: "test-user",
+      });
+
+      await threadService.updateSummary({
+        projectId: "proj",
+        threadId: node.metadata.id,
+        content: "New summary",
+        author: "test-user",
+        mode: "team",
+      });
+
+      const read = await storage.readThread("proj", node.metadata.id);
+      expect(read.metadata.title).toBe("Refactor --- phase 2");
+      expect(read.metadata.parentId).toBe("main");
+      expect(read.content).toBe("New summary");
     });
   });
 
@@ -220,6 +357,35 @@ describe("ThreadService", () => {
 
       const state = await storage.readConfig();
       expect(state.activeThreadId).toBe("main");
+    });
+
+    it("rejects threads that are not in the tree", async () => {
+      await expect(
+        threadService.delete({
+          projectId: "proj",
+          threadId: "ghost",
+          author: "test-user",
+          mode: "solo",
+        })
+      ).rejects.toThrow('Thread "ghost" not found');
+    });
+
+    it("refuses to cascade over teammates' threads in team mode", async () => {
+      await threadService.create({ projectId: "proj", parentId: "main", title: "Mine", author: "alice" });
+      await threadService.create({ projectId: "proj", parentId: "mine", title: "Theirs", author: "bob" });
+
+      await expect(
+        threadService.delete({
+          projectId: "proj",
+          threadId: "mine",
+          author: "alice",
+          mode: "team",
+        })
+      ).rejects.toThrow("theirs (bob)");
+
+      const tree = await storage.readTree("proj");
+      expect(tree.nodes["mine"]).toBeDefined();
+      expect(tree.nodes["theirs"]).toBeDefined();
     });
   });
 

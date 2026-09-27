@@ -1,7 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import {
+  mkdtemp,
+  rm,
+  readdir,
+  readFile,
+  writeFile,
+  utimes,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { setTimeout as delay } from "node:timers/promises";
 import { StorageServiceImpl } from "../../src/core/storage.js";
 
 let tempDir: string;
@@ -153,6 +161,121 @@ describe("StorageService", () => {
       await storage.writeTree("proj", tree);
       const read = await storage.readTree("proj");
       expect(read).toEqual(tree);
+    });
+  });
+
+  describe("ID validation", () => {
+    const traversal = "../../../docs/index";
+
+    it("rejects path traversal in thread IDs", async () => {
+      await expect(storage.readThread("proj", traversal)).rejects.toThrow(
+        "Invalid thread ID"
+      );
+      await expect(storage.deleteThread("proj", traversal)).rejects.toThrow(
+        "Invalid thread ID"
+      );
+      await expect(storage.threadExists("proj", "a/b")).rejects.toThrow(
+        "Invalid thread ID"
+      );
+    });
+
+    it("rejects path traversal in project IDs", async () => {
+      await expect(storage.readProjectConfig("../../package")).rejects.toThrow(
+        "Invalid project ID"
+      );
+      await expect(storage.readTree("..")).rejects.toThrow(
+        "Invalid project ID"
+      );
+      await expect(
+        storage.writeTree("../evil", { nodes: {} })
+      ).rejects.toThrow("Invalid project ID");
+    });
+
+    it("never takes a thread's identity from its file content", async () => {
+      await storage.writeThread("proj", {
+        metadata: {
+          id: "legit",
+          title: "Legit",
+          parentId: "main",
+          author: "a",
+          createdAt: "",
+          updatedAt: "",
+        },
+        content: "",
+      });
+      const filePath = join(tempDir, "threads", "proj", "legit.md");
+      const tampered = (await readFile(filePath, "utf-8")).replace(
+        "id: legit",
+        "id: ../../../PWNED"
+      );
+      await writeFile(filePath, tampered);
+
+      const node = await storage.readThread("proj", "legit");
+      expect(node.metadata.id).toBe("legit");
+    });
+  });
+
+  describe("atomic writes", () => {
+    it("leaves no temporary files behind", async () => {
+      for (let i = 0; i < 5; i++) {
+        await storage.writeTree("proj", { nodes: {} });
+        await storage.writeConfig({
+          activeProjectId: "proj",
+          activeThreadId: "main",
+          author: "a",
+          version: 1,
+        });
+      }
+      const files = [
+        ...(await readdir(tempDir)),
+        ...(await readdir(join(tempDir, "trees"))),
+      ];
+      expect(files.filter((f) => f.endsWith(".tmp"))).toEqual([]);
+    });
+  });
+
+  describe("withLock", () => {
+    async function incrementCounter(s: StorageServiceImpl): Promise<void> {
+      await s.withLock(async () => {
+        const state = await s.readConfig();
+        await delay(5); // widen the race window
+        await s.writeConfig({ ...state, version: state.version + 1 });
+      });
+    }
+
+    it("serializes read-modify-write sequences across instances", async () => {
+      // Two instances on the same directory behave like two processes
+      const other = new StorageServiceImpl(tempDir);
+      await Promise.all(
+        Array.from({ length: 10 }, (_, i) =>
+          incrementCounter(i % 2 === 0 ? storage : other)
+        )
+      );
+
+      const state = await storage.readConfig();
+      expect(state.version).toBe(1 + 10);
+      expect(await readdir(tempDir)).not.toContain(".lock");
+    });
+
+    it("reclaims a lock abandoned by a crashed process", async () => {
+      const lockPath = join(tempDir, ".lock");
+      await writeFile(lockPath, "crashed-process");
+      const past = new Date(Date.now() - 60_000);
+      await utimes(lockPath, past, past);
+
+      await incrementCounter(storage);
+      expect((await storage.readConfig()).version).toBe(2);
+    });
+
+    it("releases the lock when the operation fails", async () => {
+      await expect(
+        storage.withLock(async () => {
+          throw new Error("boom");
+        })
+      ).rejects.toThrow("boom");
+
+      await incrementCounter(storage);
+      expect((await storage.readConfig()).version).toBe(2);
     });
   });
 });

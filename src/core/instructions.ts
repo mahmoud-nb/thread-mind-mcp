@@ -165,7 +165,13 @@ async function writeWithMarkers(
 
   if (existing.includes(MARKER_START)) {
     const startIdx = existing.indexOf(MARKER_START);
-    const endIdx = existing.indexOf(MARKER_END);
+    const endIdx = existing.indexOf(MARKER_END, startIdx);
+    if (endIdx === -1) {
+      // Replacing up to the end of the file could destroy user content
+      throw new Error(
+        `${filePath} contains ${MARKER_START} without a matching ${MARKER_END}. Restore the end marker (or remove the start marker), then run threadmind_init again.`
+      );
+    }
     const updated =
       existing.slice(0, startIdx) +
       block +

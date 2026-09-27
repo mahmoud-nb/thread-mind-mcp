@@ -5,6 +5,9 @@ import {
   generateInstructions,
   type ClientTarget,
 } from "../core/instructions.js";
+import { ID_PATTERN, ID_PATTERN_MESSAGE } from "../core/ids.js";
+
+const id = () => z.string().regex(ID_PATTERN, ID_PATTERN_MESSAGE);
 
 export function registerTools(server: McpServer, services: Services): void {
   const { storage, project, thread, context, stats } = services;
@@ -82,7 +85,7 @@ export function registerTools(server: McpServer, services: Services): void {
     "project_switch",
     "Switch to a different project",
     {
-      projectId: z.string().describe("Project ID to switch to"),
+      projectId: id().describe("Project ID to switch to"),
     },
     async ({ projectId }) => {
       try {
@@ -107,8 +110,7 @@ export function registerTools(server: McpServer, services: Services): void {
     "Create a new child thread branching from a parent thread",
     {
       title: z.string().describe("Thread title"),
-      parentId: z
-        .string()
+      parentId: id()
         .optional()
         .describe("Parent thread ID (defaults to current active thread)"),
     },
@@ -126,7 +128,7 @@ export function registerTools(server: McpServer, services: Services): void {
           projectId: state.activeProjectId,
           parentId: resolvedParent,
           title,
-          author: state.author,
+          author: await project.resolveAuthor(),
         });
 
         const treeView = await thread.list(state.activeProjectId);
@@ -167,7 +169,7 @@ export function registerTools(server: McpServer, services: Services): void {
     "thread_switch",
     "Switch to a different thread",
     {
-      threadId: z.string().describe("Thread ID to switch to"),
+      threadId: id().describe("Thread ID to switch to"),
     },
     async ({ threadId }) => {
       try {
@@ -229,8 +231,7 @@ export function registerTools(server: McpServer, services: Services): void {
     "Update the summary/content of a thread",
     {
       content: z.string().describe("The new summary content (markdown)"),
-      threadId: z
-        .string()
+      threadId: id()
         .optional()
         .describe("Thread ID to update (defaults to active thread)"),
     },
@@ -251,7 +252,7 @@ export function registerTools(server: McpServer, services: Services): void {
           projectId: state.activeProjectId,
           threadId: resolvedThread,
           content,
-          author: state.author,
+          author: await project.resolveAuthor(),
           mode: projectConfig.mode,
         });
 
@@ -338,7 +339,7 @@ export function registerTools(server: McpServer, services: Services): void {
     "thread_delete",
     "Delete a thread and all its descendants",
     {
-      threadId: z.string().describe("Thread ID to delete"),
+      threadId: id().describe("Thread ID to delete"),
     },
     async ({ threadId }) => {
       try {
@@ -354,7 +355,7 @@ export function registerTools(server: McpServer, services: Services): void {
         await thread.delete({
           projectId: state.activeProjectId,
           threadId,
-          author: state.author,
+          author: await project.resolveAuthor(),
           mode: projectConfig.mode,
         });
 
@@ -379,8 +380,8 @@ export function registerTools(server: McpServer, services: Services): void {
     "thread_rebase",
     "Move a thread to a different parent. All descendants move with it. Similar to git rebase.",
     {
-      threadId: z.string().describe("ID of the thread to move"),
-      newParentId: z.string().describe("ID of the new parent thread"),
+      threadId: id().describe("ID of the thread to move"),
+      newParentId: id().describe("ID of the new parent thread"),
     },
     async ({ threadId, newParentId }) => {
       try {
@@ -397,7 +398,7 @@ export function registerTools(server: McpServer, services: Services): void {
           projectId: state.activeProjectId,
           threadId,
           newParentId,
-          author: state.author,
+          author: await project.resolveAuthor(),
           mode: projectConfig.mode,
         });
 

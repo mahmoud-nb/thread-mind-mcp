@@ -1,7 +1,20 @@
-import { readFile, writeFile, mkdir, readdir, unlink, rm } from "node:fs/promises";
-import { join } from "node:path";
+import {
+  readFile,
+  writeFile,
+  mkdir,
+  readdir,
+  unlink,
+  rm,
+  rename,
+  open,
+  access,
+} from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import { parseFrontmatter, serializeFrontmatter } from "./frontmatter.js";
+import { assertValidId } from "./ids.js";
+import { acquireFileLock } from "./lock.js";
 import type {
   AppState,
   ProjectConfig,
@@ -20,6 +33,7 @@ const DEFAULT_STATE: AppState = {
 
 export class StorageServiceImpl implements StorageService {
   private basePath: string;
+  private lockQueue: Promise<unknown> = Promise.resolve();
 
   constructor(basePath?: string) {
     this.basePath = basePath ?? join(process.cwd(), ".threadmind");
@@ -42,6 +56,10 @@ export class StorageServiceImpl implements StorageService {
           "# Per-user state — never commit (each developer has their own active project/thread and author ID)",
           "config.json",
           "",
+          "# Transient lock and temporary files",
+          ".lock",
+          "*.tmp",
+          "",
           "# Token savings statistics — optional",
           "# Uncomment the line below to ignore stats/ if you prefer to avoid merge conflicts",
           "# (every summary_update call modifies this file).",
@@ -52,6 +70,25 @@ export class StorageServiceImpl implements StorageService {
         "utf-8"
       );
     }
+  }
+
+  /**
+   * Run a read-modify-write sequence exclusively: in-process through a
+   * promise queue, across processes (several sessions on the same repository)
+   * through a lock file. Not re-entrant: never call withLock inside fn.
+   */
+  async withLock<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.lockQueue.then(async () => {
+      await mkdir(this.basePath, { recursive: true });
+      const release = await acquireFileLock(join(this.basePath, ".lock"));
+      try {
+        return await fn();
+      } finally {
+        await release();
+      }
+    });
+    this.lockQueue = run.catch(() => undefined);
+    return run;
   }
 
   // --- Config (AppState) ---
@@ -78,16 +115,13 @@ export class StorageServiceImpl implements StorageService {
   // --- ProjectConfig ---
 
   async readProjectConfig(projectId: string): Promise<ProjectConfig> {
-    const raw = await readFile(
-      join(this.basePath, "projects", `${projectId}.json`),
-      "utf-8"
-    );
+    const raw = await readFile(this.projectFile(projectId), "utf-8");
     return JSON.parse(raw) as ProjectConfig;
   }
 
   async writeProjectConfig(config: ProjectConfig): Promise<void> {
     await this.atomicWrite(
-      join(this.basePath, "projects", `${config.id}.json`),
+      this.projectFile(config.id),
       JSON.stringify(config, null, 2)
     );
   }
@@ -113,40 +147,35 @@ export class StorageServiceImpl implements StorageService {
   // --- Threads ---
 
   async readThread(projectId: string, threadId: string): Promise<ThreadNode> {
-    const raw = await readFile(
-      join(this.basePath, "threads", projectId, `${threadId}.md`),
-      "utf-8"
-    );
-    return parseFrontmatter(raw);
+    const raw = await readFile(this.threadFile(projectId, threadId), "utf-8");
+    const node = parseFrontmatter(raw);
+    // The file name is the identity: never trust an id stored inside the file
+    node.metadata.id = threadId;
+    return node;
   }
 
   async writeThread(projectId: string, node: ThreadNode): Promise<void> {
-    await mkdir(join(this.basePath, "threads", projectId), {
-      recursive: true,
-    });
-    const raw = serializeFrontmatter(node.metadata, node.content);
+    const filePath = this.threadFile(projectId, node.metadata.id);
+    await mkdir(dirname(filePath), { recursive: true });
     await this.atomicWrite(
-      join(this.basePath, "threads", projectId, `${node.metadata.id}.md`),
-      raw
+      filePath,
+      serializeFrontmatter(node.metadata, node.content)
     );
   }
 
   async deleteThread(projectId: string, threadId: string): Promise<void> {
+    const filePath = this.threadFile(projectId, threadId);
     try {
-      await unlink(
-        join(this.basePath, "threads", projectId, `${threadId}.md`)
-      );
+      await unlink(filePath);
     } catch {
       // File may not exist
     }
   }
 
   async threadExists(projectId: string, threadId: string): Promise<boolean> {
+    const filePath = this.threadFile(projectId, threadId);
     try {
-      await readFile(
-        join(this.basePath, "threads", projectId, `${threadId}.md`),
-        "utf-8"
-      );
+      await access(filePath);
       return true;
     } catch {
       return false;
@@ -156,11 +185,9 @@ export class StorageServiceImpl implements StorageService {
   // --- Trees ---
 
   async readTree(projectId: string): Promise<TreeStructure> {
+    const filePath = this.treeFile(projectId);
     try {
-      const raw = await readFile(
-        join(this.basePath, "trees", `${projectId}.json`),
-        "utf-8"
-      );
+      const raw = await readFile(filePath, "utf-8");
       return JSON.parse(raw) as TreeStructure;
     } catch {
       return { nodes: {} };
@@ -169,7 +196,7 @@ export class StorageServiceImpl implements StorageService {
 
   async writeTree(projectId: string, tree: TreeStructure): Promise<void> {
     await this.atomicWrite(
-      join(this.basePath, "trees", `${projectId}.json`),
+      this.treeFile(projectId),
       JSON.stringify(tree, null, 2)
     );
   }
@@ -177,11 +204,9 @@ export class StorageServiceImpl implements StorageService {
   // --- Stats ---
 
   async readProjectStats(projectId: string): Promise<ProjectStats> {
+    const filePath = this.statsFile(projectId);
     try {
-      const raw = await readFile(
-        join(this.basePath, "stats", `${projectId}.json`),
-        "utf-8"
-      );
+      const raw = await readFile(filePath, "utf-8");
       return JSON.parse(raw) as ProjectStats;
     } catch {
       return { projectId, threads: {} };
@@ -193,7 +218,7 @@ export class StorageServiceImpl implements StorageService {
     stats: ProjectStats
   ): Promise<void> {
     await this.atomicWrite(
-      join(this.basePath, "stats", `${projectId}.json`),
+      this.statsFile(projectId),
       JSON.stringify(stats, null, 2)
     );
   }
@@ -201,6 +226,7 @@ export class StorageServiceImpl implements StorageService {
   // --- Cleanup ---
 
   async deleteProjectDir(projectId: string): Promise<void> {
+    assertValidId(projectId, "project");
     try {
       await rm(join(this.basePath, "threads", projectId), {
         recursive: true,
@@ -210,25 +236,75 @@ export class StorageServiceImpl implements StorageService {
       // Directory may not exist
     }
     try {
-      await unlink(join(this.basePath, "stats", `${projectId}.json`));
+      await unlink(this.statsFile(projectId));
     } catch {
       // Stats file may not exist
     }
   }
 
+  // --- Paths (every ID is validated before it becomes part of a path) ---
+
+  private projectFile(projectId: string): string {
+    assertValidId(projectId, "project");
+    return join(this.basePath, "projects", `${projectId}.json`);
+  }
+
+  private threadFile(projectId: string, threadId: string): string {
+    assertValidId(projectId, "project");
+    assertValidId(threadId, "thread");
+    return join(this.basePath, "threads", projectId, `${threadId}.md`);
+  }
+
+  private treeFile(projectId: string): string {
+    assertValidId(projectId, "project");
+    return join(this.basePath, "trees", `${projectId}.json`);
+  }
+
+  private statsFile(projectId: string): string {
+    assertValidId(projectId, "project");
+    return join(this.basePath, "stats", `${projectId}.json`);
+  }
+
   // --- Helpers ---
 
+  /** Write to a temp file, flush it, then atomically replace the target. */
   private async atomicWrite(
     filePath: string,
     data: string
   ): Promise<void> {
     const tmpPath = `${filePath}.${randomUUID().slice(0, 8)}.tmp`;
-    await writeFile(tmpPath, data, "utf-8");
-    await writeFile(filePath, data, "utf-8");
     try {
-      await unlink(tmpPath);
-    } catch {
-      // Temp file cleanup is best-effort
+      const handle = await open(tmpPath, "w");
+      try {
+        await handle.writeFile(data, "utf-8");
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+      await renameWithRetry(tmpPath, filePath);
+    } catch (error) {
+      await unlink(tmpPath).catch(() => {});
+      throw error;
+    }
+  }
+}
+
+/**
+ * On Windows, replacing a file fails transiently while another process
+ * (antivirus, indexer, editor) holds it open.
+ */
+async function renameWithRetry(from: string, to: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      const transient =
+        process.platform === "win32" &&
+        (code === "EPERM" || code === "EACCES" || code === "EBUSY");
+      if (!transient || attempt >= 5) throw error;
+      await delay(20 * 2 ** attempt);
     }
   }
 }

@@ -1,9 +1,9 @@
 import { execSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import process from "node:process";
+import { normalizeTitle, slugify } from "./ids.js";
 import type {
   ProjectConfig,
-  AppState,
   StorageService,
   ProjectService,
   ThreadNode,
@@ -19,60 +19,58 @@ export class ProjectServiceImpl implements ProjectService {
     mode?: "solo" | "team";
   }): Promise<ProjectConfig> {
     await this.storage.ensureInitialized();
+    const title = normalizeTitle(opts.title);
 
-    const id = await this.generateUniqueId(opts.title);
+    return this.storage.withLock(async () => {
+      const id = await this.generateUniqueId(title);
 
-    const config: ProjectConfig = {
-      id,
-      title: opts.title,
-      systemContext: opts.systemContext ?? "",
-      mode: opts.mode ?? "solo",
-      rootThreadId: "main",
-    };
+      const config: ProjectConfig = {
+        id,
+        title,
+        systemContext: opts.systemContext ?? "",
+        mode: opts.mode ?? "solo",
+        rootThreadId: "main",
+      };
 
-    // Create project config
-    await this.storage.writeProjectConfig(config);
+      // Create project config
+      await this.storage.writeProjectConfig(config);
 
-    // Generate author ID
-    const state = await this.storage.readConfig();
-    let author = state.author;
-    if (!author) {
-      author = this.generateAuthorId();
-    }
+      const author = await ensureAuthor(this.storage);
 
-    // Create the main thread
-    const now = new Date().toISOString();
-    const mainThread: ThreadNode = {
-      metadata: {
-        id: "main",
-        title: opts.title,
-        parentId: null,
-        author,
-        createdAt: now,
-        updatedAt: now,
-      },
-      content: "",
-    };
-    await this.storage.writeThread(id, mainThread);
+      // Create the main thread
+      const now = new Date().toISOString();
+      const mainThread: ThreadNode = {
+        metadata: {
+          id: "main",
+          title,
+          parentId: null,
+          author,
+          createdAt: now,
+          updatedAt: now,
+        },
+        content: "",
+      };
+      await this.storage.writeThread(id, mainThread);
 
-    // Create the tree structure
-    const tree: TreeStructure = {
-      nodes: {
-        main: { parentId: null, children: [] },
-      },
-    };
-    await this.storage.writeTree(id, tree);
+      // Create the tree structure
+      const tree: TreeStructure = {
+        nodes: {
+          main: { parentId: null, children: [] },
+        },
+      };
+      await this.storage.writeTree(id, tree);
 
-    // Update app state
-    await this.storage.writeConfig({
-      ...state,
-      activeProjectId: id,
-      activeThreadId: "main",
-      author,
-      version: 1,
+      // Update app state
+      const state = await this.storage.readConfig();
+      await this.storage.writeConfig({
+        ...state,
+        activeProjectId: id,
+        activeThreadId: "main",
+        version: 1,
+      });
+
+      return config;
     });
-
-    return config;
   }
 
   async list(): Promise<ProjectConfig[]> {
@@ -84,11 +82,13 @@ export class ProjectServiceImpl implements ProjectService {
     // Validate project exists
     await this.storage.readProjectConfig(projectId);
 
-    const state = await this.storage.readConfig();
-    await this.storage.writeConfig({
-      ...state,
-      activeProjectId: projectId,
-      activeThreadId: "main",
+    await this.storage.withLock(async () => {
+      const state = await this.storage.readConfig();
+      await this.storage.writeConfig({
+        ...state,
+        activeProjectId: projectId,
+        activeThreadId: "main",
+      });
     });
   }
 
@@ -102,8 +102,12 @@ export class ProjectServiceImpl implements ProjectService {
     }
   }
 
+  async resolveAuthor(): Promise<string> {
+    return this.storage.withLock(() => ensureAuthor(this.storage));
+  }
+
   private async generateUniqueId(title: string): Promise<string> {
-    let id = slugify(title);
+    const id = slugify(title) || "project";
     const projects = await this.storage.listProjects();
     const existingIds = new Set(projects.map((p) => p.id));
 
@@ -115,28 +119,52 @@ export class ProjectServiceImpl implements ProjectService {
     }
     return `${id}-${counter}`;
   }
-
-  private generateAuthorId(): string {
-    let gitName = "user";
-    try {
-      gitName = execSync("git config user.name", {
-          encoding: "utf-8",
-          shell: process.platform === "win32" ? "cmd.exe" : "/bin/sh",
-        }).trim();
-    } catch {
-      // git not available, use default
-    }
-    const shortId = randomUUID().slice(0, 4);
-    return `${slugify(gitName)}-${shortId}`;
-  }
 }
 
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, "")
-    .replace(/[\s_]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "");
+/**
+ * Derive the author ID from the git identity so that the same person keeps
+ * ownership of their threads across clones and machines.
+ */
+export function authorIdFrom(name: string, email: string): string {
+  const base = slugify(name) || "user";
+  const suffix = email.trim()
+    ? createHash("sha256")
+        .update(email.trim().toLowerCase())
+        .digest("hex")
+        .slice(0, 4)
+    : randomUUID().slice(0, 4);
+  return `${base}-${suffix}`;
+}
+
+/**
+ * Return the local author ID, creating and persisting it on first use.
+ * THREADMIND_AUTHOR overrides it. Must run while holding the storage lock.
+ */
+async function ensureAuthor(storage: StorageService): Promise<string> {
+  const override = process.env.THREADMIND_AUTHOR?.trim();
+  if (override) return override;
+
+  const state = await storage.readConfig();
+  if (state.author) return state.author;
+
+  const author = authorIdFrom(
+    readGitConfig("user.name"),
+    readGitConfig("user.email")
+  );
+  await storage.writeConfig({ ...state, author });
+  return author;
+}
+
+function readGitConfig(key: string): string {
+  try {
+    return execSync(`git config ${key}`, {
+      encoding: "utf-8",
+      shell: process.platform === "win32" ? "cmd.exe" : "/bin/sh",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 5000,
+    }).trim();
+  } catch {
+    // git not available or key not set
+    return "";
+  }
 }

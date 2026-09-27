@@ -12,25 +12,27 @@ export class StatsServiceImpl implements StatsService {
     threadId: string,
     newContent: string
   ): Promise<void> {
-    const stats = await this.storage.readProjectStats(projectId);
-    const existing = stats.threads[threadId];
+    await this.storage.withLock(async () => {
+      const stats = await this.storage.readProjectStats(projectId);
+      const existing = stats.threads[threadId];
 
-    if (existing) {
-      existing.updateCount += 1;
-      existing.currentContentLength = newContent.length;
-      existing.cumulativeInputLength += newContent.length;
-      existing.lastUpdatedAt = new Date().toISOString();
-    } else {
-      stats.threads[threadId] = {
-        updateCount: 1,
-        firstContentLength: newContent.length,
-        currentContentLength: newContent.length,
-        cumulativeInputLength: newContent.length,
-        lastUpdatedAt: new Date().toISOString(),
-      };
-    }
+      if (existing) {
+        existing.updateCount += 1;
+        existing.currentContentLength = newContent.length;
+        existing.cumulativeInputLength += newContent.length;
+        existing.lastUpdatedAt = new Date().toISOString();
+      } else {
+        stats.threads[threadId] = {
+          updateCount: 1,
+          firstContentLength: newContent.length,
+          currentContentLength: newContent.length,
+          cumulativeInputLength: newContent.length,
+          lastUpdatedAt: new Date().toISOString(),
+        };
+      }
 
-    await this.storage.writeProjectStats(projectId, stats);
+      await this.storage.writeProjectStats(projectId, stats);
+    });
   }
 
   async getProjectStats(projectId: string): Promise<ProjectStats> {

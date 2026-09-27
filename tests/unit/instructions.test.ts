@@ -189,4 +189,21 @@ describe("generateInstructions", () => {
     const userPos = content.indexOf("# Existing Rules");
     expect(userPos).toBeLessThan(markerPos);
   });
+
+  it("refuses to touch a file whose end marker was removed", async () => {
+    const claudePath = join(tempDir, "CLAUDE.md");
+    const original =
+      "# Rules\n<!-- threadmind:start -->\nold section\n# My own notes\n";
+    await writeFile(claudePath, original, "utf-8");
+
+    await expect(
+      generateInstructions({
+        projectTitle: "My App",
+        basePath: tempDir,
+        clients: ["claude"],
+      })
+    ).rejects.toThrow("without a matching <!-- threadmind:end -->");
+
+    expect(await readFile(claudePath, "utf-8")).toBe(original);
+  });
 });
