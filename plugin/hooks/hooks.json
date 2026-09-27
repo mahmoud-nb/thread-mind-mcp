@@ -1,0 +1,38 @@
+{
+  "description": "Load the active ThreadMind thread when a session starts, and measure how large conversations grow",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/node_modules/thread-mind-mcp/dist/index.js",
+              "hook",
+              "session-start"
+            ],
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/node_modules/thread-mind-mcp/dist/index.js",
+              "hook",
+              "session-end"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

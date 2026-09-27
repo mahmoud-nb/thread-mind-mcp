@@ -1,0 +1,15 @@
+{
+  "name": "thread-mind",
+  "description": "ThreadMind for Claude Code",
+  "owner": {
+    "name": "Mahmoud NBET",
+    "url": "https://github.com/mahmoud-nb"
+  },
+  "plugins": [
+    {
+      "name": "thread-mind",
+      "source": "./plugin",
+      "description": "Loads the active ThreadMind thread when a session starts, adds /thread-mind commands, and measures how large conversations grow"
+    }
+  ]
+}

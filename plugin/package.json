@@ -1,0 +1,9 @@
+{
+  "name": "thread-mind-claude-plugin",
+  "private": true,
+  "description": "Installs the ThreadMind MCP server for the Claude Code plugin",
+  "license": "MIT",
+  "dependencies": {
+    "thread-mind-mcp": "0.4.2"
+  }
+}

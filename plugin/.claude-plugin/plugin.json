@@ -1,0 +1,14 @@
+{
+  "name": "thread-mind",
+  "displayName": "ThreadMind",
+  "version": "0.4.2",
+  "description": "Git-friendly memory for AI coding sessions: a tree of thread summaries, loaded automatically when a session starts",
+  "author": {
+    "name": "Mahmoud NBET",
+    "url": "https://github.com/mahmoud-nb"
+  },
+  "homepage": "https://mahmoud-nb.github.io/thread-mind-mcp/",
+  "repository": "https://github.com/mahmoud-nb/thread-mind-mcp",
+  "license": "MIT",
+  "keywords": ["mcp", "memory", "context", "threads", "git"]
+}

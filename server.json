@@ -1,0 +1,36 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.mahmoud-nb/thread-mind",
+  "description": "Git-friendly memory for AI coding: a tree of thread summaries with inherited context",
+  "repository": {
+    "url": "https://github.com/mahmoud-nb/thread-mind-mcp",
+    "source": "github"
+  },
+  "version": "0.4.2",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "thread-mind-mcp",
+      "version": "0.4.2",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "THREADMIND_ROOT",
+          "description": "Project directory holding .threadmind/, for clients that start servers outside your project",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "THREADMIND_AUTHOR",
+          "description": "Author ID used for team-mode ownership (defaults to one derived from your git identity)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}
