@@ -1,19 +1,37 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   mkdtemp,
+  mkdir,
   rm,
   readdir,
   readFile,
   writeFile,
   utimes,
 } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
 import { StorageServiceImpl } from "../../src/core/storage.js";
+import type { ThreadMetadata } from "../../src/types/index.js";
 
 let tempDir: string;
 let storage: StorageServiceImpl;
+
+function thread(id: string, parentId: string | null, extra: Partial<ThreadMetadata> = {}) {
+  return {
+    metadata: {
+      id,
+      title: id,
+      parentId,
+      author: "a",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      ...extra,
+    },
+    content: "",
+  };
+}
 
 beforeEach(async () => {
   tempDir = await mkdtemp(join(tmpdir(), "threadmind-test-"));
@@ -109,38 +127,25 @@ describe("StorageService", () => {
 
     it("checks thread existence", async () => {
       expect(await storage.threadExists("proj", "nope")).toBe(false);
-
-      await storage.writeThread("proj", {
-        metadata: {
-          id: "exists",
-          title: "Exists",
-          parentId: null,
-          author: "a",
-          createdAt: "",
-          updatedAt: "",
-        },
-        content: "",
-      });
-
+      await storage.writeThread("proj", thread("exists", null));
       expect(await storage.threadExists("proj", "exists")).toBe(true);
     });
 
     it("deletes a thread", async () => {
-      await storage.writeThread("proj", {
-        metadata: {
-          id: "to-delete",
-          title: "Delete Me",
-          parentId: null,
-          author: "a",
-          createdAt: "",
-          updatedAt: "",
-        },
-        content: "",
-      });
-
+      await storage.writeThread("proj", thread("to-delete", null));
       expect(await storage.threadExists("proj", "to-delete")).toBe(true);
       await storage.deleteThread("proj", "to-delete");
       expect(await storage.threadExists("proj", "to-delete")).toBe(false);
+    });
+
+    it("lists every readable thread of a project", async () => {
+      await storage.writeThread("proj", thread("main", null));
+      await storage.writeThread("proj", thread("child", "main"));
+      await writeFile(join(tempDir, "threads", "proj", "broken.md"), "no frontmatter");
+      await writeFile(join(tempDir, "threads", "proj", "Bad Name.md"), "---\nid: x\n---\n");
+
+      const ids = (await storage.listThreads("proj")).map((t) => t.metadata.id).sort();
+      expect(ids).toEqual(["child", "main"]);
     });
   });
 
@@ -150,17 +155,50 @@ describe("StorageService", () => {
       expect(tree.nodes).toEqual({});
     });
 
-    it("writes and reads tree", async () => {
-      const tree = {
-        nodes: {
-          main: { parentId: null, children: ["feature-a"] },
-          "feature-a": { parentId: "main", children: [] },
-        },
-      };
+    it("derives the tree from each thread's parentId", async () => {
+      await storage.writeThread("proj", thread("main", null, { createdAt: "2026-01-01T00:00:00.000Z" }));
+      await storage.writeThread("proj", thread("b", "main", { createdAt: "2026-01-03T00:00:00.000Z" }));
+      await storage.writeThread("proj", thread("a", "main", { createdAt: "2026-01-02T00:00:00.000Z" }));
 
-      await storage.writeTree("proj", tree);
-      const read = await storage.readTree("proj");
-      expect(read).toEqual(tree);
+      expect(await storage.readTree("proj")).toEqual({
+        nodes: {
+          main: { parentId: null, children: ["a", "b"] },
+          a: { parentId: "main", children: [] },
+          b: { parentId: "main", children: [] },
+        },
+      });
+    });
+
+    it("makes a thread whose parent is missing a root", async () => {
+      await storage.writeThread("proj", thread("main", null));
+      await storage.writeThread("proj", thread("orphan", "gone"));
+
+      const tree = await storage.readTree("proj");
+      expect(tree.nodes["orphan"].parentId).toBeNull();
+    });
+
+    it("migrates a legacy tree.json, which wins over the thread files", async () => {
+      // Before 0.5, a title with --- could wipe parentId from the thread file
+      await storage.writeThread("proj", thread("main", null));
+      await storage.writeThread("proj", thread("auth", null));
+      await mkdir(join(tempDir, "trees"), { recursive: true });
+      const legacyPath = join(tempDir, "trees", "proj.json");
+      await writeFile(
+        legacyPath,
+        JSON.stringify({
+          nodes: {
+            main: { parentId: null, children: ["auth"] },
+            auth: { parentId: "main", children: [] },
+            gone: { parentId: "main", children: [] },
+          },
+        })
+      );
+
+      const tree = await storage.readTree("proj");
+      expect(tree.nodes["auth"].parentId).toBe("main");
+      expect(tree.nodes["gone"]).toBeUndefined();
+      expect((await storage.readThread("proj", "auth")).metadata.parentId).toBe("main");
+      expect(existsSync(legacyPath)).toBe(false);
     });
   });
 
@@ -174,10 +212,9 @@ describe("StorageService", () => {
       });
       expect(resolved).toBe(false);
 
-      await lazy.ensureInitialized();
-      await lazy.writeTree("proj", { nodes: {} });
+      await lazy.writeThread("proj", thread("main", null));
 
-      expect((await readdir(join(dataDir, "trees")))).toEqual(["proj.json"]);
+      expect(await readdir(join(dataDir, "threads", "proj"))).toEqual(["main.md"]);
       expect(await lazy.workspaceRoot()).toBe(join(tempDir, "workspace"));
     });
   });
@@ -205,22 +242,12 @@ describe("StorageService", () => {
         "Invalid project ID"
       );
       await expect(
-        storage.writeTree("../evil", { nodes: {} })
+        storage.writeThread("../evil", thread("main", null))
       ).rejects.toThrow("Invalid project ID");
     });
 
     it("never takes a thread's identity from its file content", async () => {
-      await storage.writeThread("proj", {
-        metadata: {
-          id: "legit",
-          title: "Legit",
-          parentId: "main",
-          author: "a",
-          createdAt: "",
-          updatedAt: "",
-        },
-        content: "",
-      });
+      await storage.writeThread("proj", thread("legit", "main"));
       const filePath = join(tempDir, "threads", "proj", "legit.md");
       const tampered = (await readFile(filePath, "utf-8")).replace(
         "id: legit",
@@ -236,7 +263,7 @@ describe("StorageService", () => {
   describe("atomic writes", () => {
     it("leaves no temporary files behind", async () => {
       for (let i = 0; i < 5; i++) {
-        await storage.writeTree("proj", { nodes: {} });
+        await storage.writeThread("proj", thread("main", null));
         await storage.writeConfig({
           activeProjectId: "proj",
           activeThreadId: "main",
@@ -246,7 +273,7 @@ describe("StorageService", () => {
       }
       const files = [
         ...(await readdir(tempDir)),
-        ...(await readdir(join(tempDir, "trees"))),
+        ...(await readdir(join(tempDir, "threads", "proj"))),
       ];
       expect(files.filter((f) => f.endsWith(".tmp"))).toEqual([]);
     });
@@ -273,6 +300,13 @@ describe("StorageService", () => {
       const state = await storage.readConfig();
       expect(state.version).toBe(1 + 10);
       expect(await readdir(tempDir)).not.toContain(".lock");
+    });
+
+    it("is re-entrant", async () => {
+      const result = await storage.withLock(() =>
+        storage.withLock(async () => "nested")
+      );
+      expect(result).toBe("nested");
     });
 
     it("reclaims a lock abandoned by a crashed process", async () => {

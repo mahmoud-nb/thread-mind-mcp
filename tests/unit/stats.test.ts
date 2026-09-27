@@ -3,7 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { StorageServiceImpl } from "../../src/core/storage.js";
-import { StatsServiceImpl } from "../../src/core/stats.js";
+import { StatsServiceImpl, formatStatsReport } from "../../src/core/stats.js";
+import type { ThreadNode } from "../../src/types/index.js";
 
 describe("StatsService", () => {
   let basePath: string;
@@ -13,7 +14,6 @@ describe("StatsService", () => {
   beforeEach(async () => {
     basePath = await mkdtemp(join(tmpdir(), "tm-stats-"));
     storage = new StorageServiceImpl(basePath);
-    await storage.ensureInitialized();
     stats = new StatsServiceImpl(storage);
   });
 
@@ -21,67 +21,113 @@ describe("StatsService", () => {
     await rm(basePath, { recursive: true, force: true });
   });
 
-  it("creates stats entry on first recordUpdate", async () => {
-    await stats.recordUpdate("proj1", "main", "First summary content here");
+  it("records the start and the end of a session together", async () => {
+    await stats.recordSessionStart({
+      sessionId: "s1",
+      projectId: "proj",
+      source: "clear",
+      injectedTokens: 1200,
+    });
+    await stats.recordSessionEnd({
+      sessionId: "s1",
+      reason: "clear",
+      finalContextTokens: 48000,
+    });
 
-    const result = await stats.getProjectStats("proj1");
-    expect(result.threads["main"]).toBeDefined();
-    expect(result.threads["main"].updateCount).toBe(1);
-    expect(result.threads["main"].firstContentLength).toBe(26);
-    expect(result.threads["main"].currentContentLength).toBe(26);
-    expect(result.threads["main"].cumulativeInputLength).toBe(26);
+    const [session] = await stats.sessions();
+    expect(session).toMatchObject({
+      sessionId: "s1",
+      projectId: "proj",
+      source: "clear",
+      injectedTokens: 1200,
+      endReason: "clear",
+      finalContextTokens: 48000,
+    });
+    expect(session.startedAt).toBeTruthy();
+    expect(session.endedAt).toBeTruthy();
   });
 
-  it("increments updateCount and accumulates cumulativeInputLength", async () => {
-    await stats.recordUpdate("proj1", "main", "Short");
-    await stats.recordUpdate("proj1", "main", "A much longer second update");
+  it("keeps the 50 most recent sessions", async () => {
+    for (let i = 0; i < 55; i++) {
+      await stats.recordSessionEnd({
+        sessionId: `s${i}`,
+        reason: "other",
+        finalContextTokens: i,
+      });
+    }
 
-    const result = await stats.getProjectStats("proj1");
-    const s = result.threads["main"];
-    expect(s.updateCount).toBe(2);
-    expect(s.firstContentLength).toBe(5); // "Short"
-    expect(s.currentContentLength).toBe(27); // "A much longer second update"
-    expect(s.cumulativeInputLength).toBe(5 + 27); // both accumulated
+    const sessions = await stats.sessions();
+    expect(sessions).toHaveLength(50);
+    expect(sessions[0].sessionId).toBe("s5");
+    expect(sessions[49].sessionId).toBe("s54");
   });
 
-  it("currentContentLength reflects only the latest update", async () => {
-    await stats.recordUpdate("proj1", "main", "AAAAAAAAAA"); // 10 chars
-    await stats.recordUpdate("proj1", "main", "BB"); // 2 chars
+  it("leaves out an unknown conversation size", async () => {
+    await stats.recordSessionEnd({
+      sessionId: "s1",
+      reason: "logout",
+      finalContextTokens: null,
+    });
 
-    const result = await stats.getProjectStats("proj1");
-    expect(result.threads["main"].currentContentLength).toBe(2);
-    expect(result.threads["main"].cumulativeInputLength).toBe(12);
+    const [session] = await stats.sessions();
+    expect(session.finalContextTokens).toBeUndefined();
+  });
+});
+
+describe("formatStatsReport", () => {
+  const thread = (id: string, content: string, status?: "done" | "abandoned"): ThreadNode => ({
+    metadata: {
+      id,
+      title: id,
+      parentId: id === "main" ? null : "main",
+      author: "a",
+      createdAt: `2026-01-0${id === "main" ? 1 : 2}T00:00:00.000Z`,
+      updatedAt: "2026-09-20T10:00:00.000Z",
+      ...(status ? { status } : {}),
+    },
+    content,
   });
 
-  it("tracks multiple threads independently", async () => {
-    await stats.recordUpdate("proj1", "main", "Main content");
-    await stats.recordUpdate("proj1", "auth", "Auth content here");
-    await stats.recordUpdate("proj1", "main", "Main updated");
+  const threads = [
+    thread("main", "x".repeat(350)),
+    thread("auth", "y".repeat(70)),
+    thread("graphql", "", "abandoned"),
+  ];
 
-    const result = await stats.getProjectStats("proj1");
-    expect(result.threads["main"].updateCount).toBe(2);
-    expect(result.threads["auth"].updateCount).toBe(1);
-    expect(result.threads["main"].cumulativeInputLength).toBe(
-      "Main content".length + "Main updated".length
+  it("reports threads, summary sizes and measured sessions", () => {
+    const report = formatStatsReport({
+      projectTitle: "Shop",
+      threads,
+      activeThreadId: "auth",
+      context: { tokens: 130, threadDepth: 2 },
+      sessions: [
+        { sessionId: "a", injectedTokens: 1000, finalContextTokens: 40000 },
+        { sessionId: "b", injectedTokens: 1300, finalContextTokens: 60000 },
+      ],
+    });
+
+    expect(report).toContain('ThreadMind Stats: "Shop"');
+    expect(report).toContain("Threads: 3 (2 active, 1 abandoned)");
+    expect(report).toContain("Active thread: auth (depth 2, ~130 tokens of context)");
+    expect(report).toMatch(/main\s+~100\s+2026-09-20/);
+    expect(report).toContain(
+      "Conversation size when sessions ended: ~50,000 tokens on average, ~60,000 at most (2 sessions)"
     );
-    expect(result.threads["auth"].cumulativeInputLength).toBe(
-      "Auth content here".length
+    expect(report).toContain(
+      "ThreadMind context loaded at session start: ~1,150 tokens on average (2 sessions)"
     );
+    expect(report).not.toContain("reduction");
   });
 
-  it("returns empty threads for unknown project", async () => {
-    const result = await stats.getProjectStats("nonexistent");
-    expect(result.projectId).toBe("nonexistent");
-    expect(result.threads).toEqual({});
-  });
+  it("explains how to get measurements", () => {
+    const report = formatStatsReport({
+      projectTitle: "Shop",
+      threads,
+      activeThreadId: "main",
+      context: { tokens: 100, threadDepth: 1 },
+      sessions: [],
+    });
 
-  it("persists stats across service instances", async () => {
-    await stats.recordUpdate("proj1", "main", "Content here");
-
-    // Create a new stats service with the same storage
-    const stats2 = new StatsServiceImpl(storage);
-    const result = await stats2.getProjectStats("proj1");
-    expect(result.threads["main"].updateCount).toBe(1);
-    expect(result.threads["main"].cumulativeInputLength).toBe(12);
+    expect(report).toContain("None yet. With the ThreadMind plugin for Claude Code");
   });
 });

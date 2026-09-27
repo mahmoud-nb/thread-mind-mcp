@@ -22,6 +22,9 @@ export const SHORTCUTS: readonly (readonly [shortcut: string, action: string])[]
   ["tm:summary [content]", "summary_update (write the summary yourself when no content is given)"],
   ["tm:delete <id>", "thread_delete"],
   ["tm:rebase <id> <new-parent-id>", "thread_rebase"],
+  ["tm:merge", "thread_merge (write the parent's new summary yourself, including this thread's conclusions)"],
+  ["tm:done [reason]", "thread_status with status done"],
+  ["tm:abandon <reason>", "thread_status with status abandoned"],
   ["tm:stats", "stats_show"],
   ["tm:project <title>", "project_create"],
   ["tm:projects", "project_list"],
@@ -36,11 +39,12 @@ export const SHORTCUTS: readonly (readonly [shortcut: string, action: string])[]
 export function serverInstructions(): string {
   const shortcuts = SHORTCUTS.map(([s, a]) => `${s} → ${a}`).join("; ");
   return [
-    "ThreadMind keeps the context of this workspace as a tree of threads. Each thread holds a short markdown summary; the context of a thread is the chain of summaries from the root down to it.",
+    "ThreadMind keeps the context of this workspace as a tree of threads. Each thread holds a short markdown summary; the context of a thread is its own summary plus the durable part (Decisions, Constraints) of its ancestors' summaries.",
     "",
-    "- At the start of a session, call context_get once. If it reports that there is no project, don't call ThreadMind tools again unless the user asks for it.",
-    "- After a decision, a resolved problem or a completed task, call summary_update with a self-contained summary of 5-15 lines: decisions and their rationale, current state, open questions and next steps. It replaces the previous summary, so keep what is still true.",
-    "- When the work moves to another topic, check thread_list, then thread_switch to an existing thread (it returns that thread's context) or thread_create a new one.",
+    "- At the start of a session, call context_get once, unless the ThreadMind context was already loaded into the conversation. If it reports that there is no project, don't call ThreadMind tools again unless the user asks for it.",
+    "- Structure summaries with these sections: ## Decisions, ## Constraints, ## State, ## Open questions, ## Next steps. After a decision or a completed task, call summary_update with a section to add to it (with replaceSection for State and Next steps). Without a section, summary_update replaces the whole summary, so keep what is still true. Pass paths (the files or directories the thread is about) so that outdated summaries can be flagged.",
+    "- When the work moves to another topic, check thread_list, then thread_switch to an existing thread (it returns that thread's context) or thread_create a new one. A thread created on a feature branch is linked to it and becomes active whenever that branch is checked out.",
+    "- When a thread is finished, call thread_merge to fold its conclusions into its parent, or thread_status to mark it done or abandoned with the reason.",
     `- The user may type shortcuts; run the matching tool right away, without asking for confirmation: ${shortcuts}.`,
   ].join("\n");
 }

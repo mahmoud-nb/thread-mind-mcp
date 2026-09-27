@@ -1,10 +1,18 @@
 import { normalizeTitle, slugify } from "./ids.js";
+import { nowIso } from "./clock.js";
+import { buildTree } from "./storage.js";
+import { updateSection } from "./summary.js";
 import type {
+  SessionService,
   StorageService,
   ThreadService,
   ThreadNode,
+  ThreadStatus,
   TreeStructure,
+  SummarySection,
 } from "../types/index.js";
+
+type Mode = "solo" | "team";
 
 export class ThreadServiceImpl implements ThreadService {
   constructor(private storage: StorageService) {}
@@ -14,8 +22,9 @@ export class ThreadServiceImpl implements ThreadService {
     parentId: string;
     title: string;
     author: string;
+    branch?: string;
   }): Promise<ThreadNode> {
-    const { projectId, parentId, author } = opts;
+    const { projectId, parentId, author, branch } = opts;
     const title = normalizeTitle(opts.title);
 
     return this.storage.withLock(async () => {
@@ -27,7 +36,7 @@ export class ThreadServiceImpl implements ThreadService {
 
       const id = await this.generateUniqueId(projectId, title, tree);
 
-      const now = new Date().toISOString();
+      const now = nowIso();
       const node: ThreadNode = {
         metadata: {
           id,
@@ -36,65 +45,28 @@ export class ThreadServiceImpl implements ThreadService {
           author,
           createdAt: now,
           updatedAt: now,
+          ...(branch ? { branch } : {}),
         },
         content: "",
       };
 
-      // Write thread file
+      // The thread file is the tree: its parentId places it
       await this.storage.writeThread(projectId, node);
-
-      // Update tree
-      tree.nodes[id] = { parentId, children: [] };
-      tree.nodes[parentId].children.push(id);
-      await this.storage.writeTree(projectId, tree);
-
-      // Set as active thread
-      const state = await this.storage.readConfig();
-      await this.storage.writeConfig({
-        ...state,
-        activeThreadId: id,
-      });
-
       return node;
     });
   }
 
-  async switch(projectId: string, threadId: string): Promise<void> {
-    await this.storage.withLock(async () => {
-      const tree = await this.storage.readTree(projectId);
-      assertThreadExists(tree, threadId);
+  async list(projectId: string, activeThreadId: string | null): Promise<string> {
+    const threads = await this.storage.listThreads(projectId);
+    const tree = buildTree(threads);
+    const metadata = new Map(threads.map((t) => [t.metadata.id, t.metadata]));
 
-      const state = await this.storage.readConfig();
-      await this.storage.writeConfig({
-        ...state,
-        activeThreadId: threadId,
-      });
-    });
-  }
-
-  async list(projectId: string): Promise<string> {
-    const tree = await this.storage.readTree(projectId);
-    const state = await this.storage.readConfig();
-    const activeThreadId = state.activeThreadId;
-
-    // Find root nodes (parentId === null)
-    const roots = Object.keys(tree.nodes).filter(
-      (id) => tree.nodes[id].parentId === null
-    );
+    const roots = threads
+      .filter((t) => tree.nodes[t.metadata.id].parentId === null)
+      .sort((a, b) => a.metadata.createdAt.localeCompare(b.metadata.createdAt))
+      .map((t) => t.metadata.id);
 
     if (roots.length === 0) return "(empty tree)";
-
-    const titles = new Map<string, string>();
-    await Promise.all(
-      Object.keys(tree.nodes).map(async (id) => {
-        try {
-          const node = await this.storage.readThread(projectId, id);
-          titles.set(id, node.metadata.title);
-        } catch {
-          // Missing or unreadable thread file: show the bare ID
-        }
-      })
-    );
 
     const lines: string[] = [];
     const visited = new Set<string>();
@@ -105,20 +77,22 @@ export class ThreadServiceImpl implements ThreadService {
       isRoot: boolean,
       isLast: boolean
     ): void => {
-      // Guard against cycles in a corrupted tree file
+      // Guard against parent cycles in hand-edited thread files
       if (visited.has(nodeId)) return;
       visited.add(nodeId);
 
+      const meta = metadata.get(nodeId);
       const connector = isRoot ? "" : isLast ? "└── " : "├── ";
-      const title = titles.get(nodeId);
       // Only show the title when the ID alone does not convey it
       // (the root's title is the project title, already known)
       const label =
-        !isRoot && title && slugify(title) !== nodeId
-          ? `${nodeId} — ${title}`
+        !isRoot && meta && slugify(meta.title) !== nodeId
+          ? `${nodeId} — ${meta.title}`
           : nodeId;
-      const activeMarker = nodeId === activeThreadId ? " ← active" : "";
-      lines.push(`${prefix}${connector}${label}${activeMarker}`);
+      const status = meta?.status ? ` [${meta.status}]` : "";
+      const branch = meta?.branch ? ` [branch: ${meta.branch}]` : "";
+      const active = nodeId === activeThreadId ? " ← active" : "";
+      lines.push(`${prefix}${connector}${label}${status}${branch}${active}`);
 
       const children = tree.nodes[nodeId]?.children ?? [];
       const childPrefix = isRoot ? "" : prefix + (isLast ? "    " : "│   ");
@@ -142,26 +116,109 @@ export class ThreadServiceImpl implements ThreadService {
     threadId: string;
     content: string;
     author: string;
-    mode: "solo" | "team";
-  }): Promise<void> {
+    mode: Mode;
+    section?: SummarySection;
+    replaceSection?: boolean;
+    commit?: string;
+    paths?: string[];
+  }): Promise<ThreadNode> {
     const { projectId, threadId, content, author, mode } = opts;
 
-    await this.storage.withLock(async () => {
-      const tree = await this.storage.readTree(projectId);
-      assertThreadExists(tree, threadId);
+    return this.storage.withLock(async () => {
+      const node = await this.readExisting(projectId, threadId);
+      assertOwner(node, author, mode, "update");
 
-      const node = await this.storage.readThread(projectId, threadId);
-
-      // Team mode: check ownership
-      if (mode === "team" && node.metadata.author !== author) {
-        throw new Error(
-          `Cannot update thread "${threadId}": owned by "${node.metadata.author}", you are "${author}"`
-        );
+      node.content = opts.section
+        ? updateSection(
+            node.content,
+            opts.section,
+            content,
+            opts.replaceSection ?? false
+          )
+        : content;
+      node.metadata.updatedAt = nowIso();
+      if (opts.commit) node.metadata.commit = opts.commit;
+      if (opts.paths) {
+        node.metadata.paths = opts.paths.length > 0 ? opts.paths : undefined;
       }
 
-      node.content = content;
-      node.metadata.updatedAt = new Date().toISOString();
       await this.storage.writeThread(projectId, node);
+      return node;
+    });
+  }
+
+  async setStatus(opts: {
+    projectId: string;
+    threadId: string;
+    status: ThreadStatus;
+    reason?: string;
+    author: string;
+    mode: Mode;
+  }): Promise<ThreadNode> {
+    const { projectId, threadId, status, reason, author, mode } = opts;
+
+    if (threadId === "main" && status !== "active") {
+      throw new Error("The main thread cannot be closed");
+    }
+
+    return this.storage.withLock(async () => {
+      const node = await this.readExisting(projectId, threadId);
+      assertOwner(node, author, mode, "change the status of");
+
+      if (status === "active") {
+        delete node.metadata.status;
+        delete node.metadata.mergedInto;
+      } else {
+        node.metadata.status = status;
+      }
+      if (reason) {
+        // Keep the outcome in the thread's durable decisions
+        node.content = updateSection(
+          node.content,
+          "decisions",
+          `- ${STATUS_LABELS[status]}: ${reason.trim()}`,
+          false
+        );
+      }
+      node.metadata.updatedAt = nowIso();
+
+      await this.storage.writeThread(projectId, node);
+      return node;
+    });
+  }
+
+  async merge(opts: {
+    projectId: string;
+    threadId: string;
+    parentSummary: string;
+    author: string;
+    mode: Mode;
+    commit?: string;
+  }): Promise<{ parentId: string }> {
+    const { projectId, threadId, parentSummary, author, mode, commit } = opts;
+
+    return this.storage.withLock(async () => {
+      const node = await this.readExisting(projectId, threadId);
+      const parentId = node.metadata.parentId;
+      if (!parentId) {
+        throw new Error(`Thread "${threadId}" has no parent to merge into`);
+      }
+      const parent = await this.readExisting(projectId, parentId);
+      assertOwner(node, author, mode, "merge");
+      assertOwner(parent, author, mode, "update");
+
+      const now = nowIso();
+      parent.content = parentSummary;
+      parent.metadata.updatedAt = now;
+      if (commit) parent.metadata.commit = commit;
+
+      node.metadata.status = "done";
+      node.metadata.mergedInto = parentId;
+      node.metadata.updatedAt = now;
+
+      await this.storage.writeThread(projectId, parent);
+      await this.storage.writeThread(projectId, node);
+      return { parentId };
     });
   }
 
@@ -169,15 +226,15 @@ export class ThreadServiceImpl implements ThreadService {
     projectId: string;
     threadId: string;
     author: string;
-    mode: "solo" | "team";
-  }): Promise<void> {
+    mode: Mode;
+  }): Promise<string[]> {
     const { projectId, threadId, author, mode } = opts;
 
     if (threadId === "main") {
       throw new Error("Cannot delete the main thread");
     }
 
-    await this.storage.withLock(async () => {
+    return this.storage.withLock(async () => {
       const tree = await this.storage.readTree(projectId);
       assertThreadExists(tree, threadId);
 
@@ -189,11 +246,7 @@ export class ThreadServiceImpl implements ThreadService {
 
       // Team mode: check ownership, including descendants deleted by the cascade
       if (mode === "team") {
-        if (node.metadata.author !== author) {
-          throw new Error(
-            `Cannot delete thread "${threadId}": owned by "${node.metadata.author}", you are "${author}"`
-          );
-        }
+        assertOwner(node, author, mode, "delete");
         const foreign: string[] = [];
         for (const id of toDelete) {
           if (id === threadId) continue;
@@ -213,31 +266,10 @@ export class ThreadServiceImpl implements ThreadService {
         }
       }
 
-      const parentId = tree.nodes[threadId].parentId;
-
-      // Delete all thread files
       for (const id of toDelete) {
         await this.storage.deleteThread(projectId, id);
-        delete tree.nodes[id];
       }
-
-      // Remove from parent's children
-      if (parentId && tree.nodes[parentId]) {
-        tree.nodes[parentId].children = tree.nodes[parentId].children.filter(
-          (c) => c !== threadId
-        );
-      }
-
-      await this.storage.writeTree(projectId, tree);
-
-      // If active thread was deleted, switch to main
-      const state = await this.storage.readConfig();
-      if (state.activeThreadId && toDelete.includes(state.activeThreadId)) {
-        await this.storage.writeConfig({
-          ...state,
-          activeThreadId: "main",
-        });
-      }
+      return toDelete;
     });
   }
 
@@ -246,7 +278,7 @@ export class ThreadServiceImpl implements ThreadService {
     threadId: string;
     newParentId: string;
     author: string;
-    mode: "solo" | "team";
+    mode: Mode;
   }): Promise<void> {
     const { projectId, threadId, newParentId, author, mode } = opts;
 
@@ -262,20 +294,12 @@ export class ThreadServiceImpl implements ThreadService {
       assertThreadExists(tree, threadId);
 
       const node = await this.storage.readThread(projectId, threadId);
-
-      // Team mode: check ownership
-      if (mode === "team" && node.metadata.author !== author) {
-        throw new Error(
-          `Cannot rebase thread "${threadId}": owned by "${node.metadata.author}", you are "${author}"`
-        );
-      }
+      assertOwner(node, author, mode, "rebase");
 
       if (!tree.nodes[newParentId]) {
         throw new Error(`Target parent thread "${newParentId}" not found`);
       }
-
-      const oldParentId = tree.nodes[threadId].parentId;
-      if (oldParentId === newParentId) {
+      if (tree.nodes[threadId].parentId === newParentId) {
         throw new Error(
           `Thread "${threadId}" is already under "${newParentId}"`
         );
@@ -289,28 +313,26 @@ export class ThreadServiceImpl implements ThreadService {
         );
       }
 
-      // Remove from old parent's children
-      if (oldParentId && tree.nodes[oldParentId]) {
-        tree.nodes[oldParentId].children = tree.nodes[
-          oldParentId
-        ].children.filter((c) => c !== threadId);
-      }
-
-      // Add to new parent's children
-      tree.nodes[newParentId].children.push(threadId);
-
-      // Update parentId in tree node
-      tree.nodes[threadId].parentId = newParentId;
-
-      await this.storage.writeTree(projectId, tree);
-
-      // Update thread frontmatter
-      const now = new Date().toISOString();
+      // Descendants follow automatically: they point at this thread
       await this.storage.writeThread(projectId, {
         ...node,
-        metadata: { ...node.metadata, parentId: newParentId, updatedAt: now },
+        metadata: {
+          ...node.metadata,
+          parentId: newParentId,
+          updatedAt: nowIso(),
+        },
       });
     });
+  }
+
+  private async readExisting(
+    projectId: string,
+    threadId: string
+  ): Promise<ThreadNode> {
+    if (!(await this.storage.threadExists(projectId, threadId))) {
+      throw new Error(`Thread "${threadId}" not found`);
+    }
+    return this.storage.readThread(projectId, threadId);
   }
 
   private collectDescendants(
@@ -334,7 +356,7 @@ export class ThreadServiceImpl implements ThreadService {
     tree: TreeStructure
   ): Promise<string> {
     const base = slugify(title) || "thread";
-    // Also skip IDs whose file exists outside the tree, so it is never overwritten
+    // Also skip IDs of unreadable files, so they are never overwritten
     const isTaken = async (id: string) =>
       Boolean(tree.nodes[id]) ||
       (await this.storage.threadExists(projectId, id));
@@ -349,15 +371,22 @@ export class ThreadServiceImpl implements ThreadService {
   }
 }
 
-/** IDs of the active project's threads that start with a typed prefix. */
+const STATUS_LABELS: Record<ThreadStatus, string> = {
+  active: "Reopened",
+  done: "Done",
+  abandoned: "Abandoned",
+};
+
+/** IDs of the session's project threads that start with a typed prefix. */
 export async function completeThreadIds(
   storage: StorageService,
+  session: SessionService,
   prefix: string
 ): Promise<string[]> {
   try {
-    const state = await storage.readConfig();
-    if (!state.activeProjectId) return [];
-    const tree = await storage.readTree(state.activeProjectId);
+    const active = await session.active();
+    if (!active) return [];
+    const tree = await storage.readTree(active.projectId);
     return Object.keys(tree.nodes).filter((id) => id.startsWith(prefix));
   } catch {
     return [];
@@ -367,5 +396,18 @@ export async function completeThreadIds(
 function assertThreadExists(tree: TreeStructure, threadId: string): void {
   if (!tree.nodes[threadId]) {
     throw new Error(`Thread "${threadId}" not found`);
+  }
+}
+
+function assertOwner(
+  node: ThreadNode,
+  author: string,
+  mode: Mode,
+  action: string
+): void {
+  if (mode === "team" && node.metadata.author !== author) {
+    throw new Error(
+      `Cannot ${action} thread "${node.metadata.id}": owned by "${node.metadata.author}", you are "${author}"`
+    );
   }
 }

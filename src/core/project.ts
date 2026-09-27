@@ -2,12 +2,12 @@ import { execSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import process from "node:process";
 import { normalizeTitle, slugify } from "./ids.js";
+import { nowIso } from "./clock.js";
 import type {
   ProjectConfig,
   StorageService,
   ProjectService,
   ThreadNode,
-  TreeStructure,
 } from "../types/index.js";
 
 export class ProjectServiceImpl implements ProjectService {
@@ -37,8 +37,8 @@ export class ProjectServiceImpl implements ProjectService {
 
       const author = await ensureAuthor(this.storage);
 
-      // Create the main thread
-      const now = new Date().toISOString();
+      // Create the main thread, the root of the project's tree
+      const now = nowIso();
       const mainThread: ThreadNode = {
         metadata: {
           id: "main",
@@ -52,23 +52,6 @@ export class ProjectServiceImpl implements ProjectService {
       };
       await this.storage.writeThread(id, mainThread);
 
-      // Create the tree structure
-      const tree: TreeStructure = {
-        nodes: {
-          main: { parentId: null, children: [] },
-        },
-      };
-      await this.storage.writeTree(id, tree);
-
-      // Update app state
-      const state = await this.storage.readConfig();
-      await this.storage.writeConfig({
-        ...state,
-        activeProjectId: id,
-        activeThreadId: "main",
-        version: 1,
-      });
-
       return config;
     });
   }
@@ -77,27 +60,14 @@ export class ProjectServiceImpl implements ProjectService {
     return this.storage.listProjects();
   }
 
-  async switch(projectId: string): Promise<void> {
-    // Validate project exists
-    await this.storage.readProjectConfig(projectId);
-
-    await this.storage.withLock(async () => {
-      const state = await this.storage.readConfig();
-      await this.storage.writeConfig({
-        ...state,
-        activeProjectId: projectId,
-        activeThreadId: "main",
-      });
-    });
-  }
-
-  async getActive(): Promise<ProjectConfig | null> {
-    const state = await this.storage.readConfig();
-    if (!state.activeProjectId) return null;
+  async get(projectId: string): Promise<ProjectConfig> {
     try {
-      return await this.storage.readProjectConfig(state.activeProjectId);
-    } catch {
-      return null;
+      return await this.storage.readProjectConfig(projectId);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new Error(`Project "${projectId}" not found`);
+      }
+      throw error;
     }
   }
 

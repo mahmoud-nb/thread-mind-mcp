@@ -2,11 +2,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { RootsListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
-import { StorageServiceImpl } from "./core/storage.js";
-import { ProjectServiceImpl } from "./core/project.js";
-import { ThreadServiceImpl } from "./core/thread.js";
-import { ContextServiceImpl } from "./core/context.js";
-import { StatsServiceImpl } from "./core/stats.js";
+import { createServices } from "./services.js";
 import { serverInstructions } from "./core/instructions.js";
 import {
   DATA_DIR_NAME,
@@ -51,15 +47,9 @@ export function createServer(basePath?: string): {
     async () => workspace.reset()
   );
 
-  const storage = new StorageServiceImpl(
+  const services: Services = createServices(
     basePath ?? (async () => join(await workspace.getRoot(), DATA_DIR_NAME))
   );
-  const project = new ProjectServiceImpl(storage);
-  const thread = new ThreadServiceImpl(storage);
-  const context = new ContextServiceImpl(storage);
-  const stats = new StatsServiceImpl(storage);
-
-  const services: Services = { storage, project, thread, context, stats };
 
   registerTools(server, services);
   registerResources(server, services);

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { StorageServiceImpl } from "../../src/core/storage.js";
@@ -9,20 +9,16 @@ let tempDir: string;
 let storage: StorageServiceImpl;
 let threadService: ThreadServiceImpl;
 
+const create = (title: string, parentId = "main", author = "test-user") =>
+  threadService.create({ projectId: "proj", parentId, title, author });
+
 beforeEach(async () => {
   tempDir = await mkdtemp(join(tmpdir(), "threadmind-thread-"));
   storage = new StorageServiceImpl(tempDir);
   await storage.ensureInitialized();
   threadService = new ThreadServiceImpl(storage);
 
-  // Set up a basic project with main thread
-  await storage.writeConfig({
-    activeProjectId: "proj",
-    activeThreadId: "main",
-    author: "test-user",
-    version: 1,
-  });
-
+  // A project with its main thread: the thread files are the tree
   await storage.writeThread("proj", {
     metadata: {
       id: "main",
@@ -34,10 +30,6 @@ beforeEach(async () => {
     },
     content: "",
   });
-
-  await storage.writeTree("proj", {
-    nodes: { main: { parentId: null, children: [] } },
-  });
 });
 
 afterEach(async () => {
@@ -47,12 +39,7 @@ afterEach(async () => {
 describe("ThreadService", () => {
   describe("create", () => {
     it("creates a child thread", async () => {
-      const node = await threadService.create({
-        projectId: "proj",
-        parentId: "main",
-        title: "Feature Auth",
-        author: "test-user",
-      });
+      const node = await create("Feature Auth");
 
       expect(node.metadata.id).toBe("feature-auth");
       expect(node.metadata.parentId).toBe("main");
@@ -63,90 +50,79 @@ describe("ThreadService", () => {
     });
 
     it("throws when parent does not exist", async () => {
-      await expect(
-        threadService.create({
-          projectId: "proj",
-          parentId: "nonexistent",
-          title: "Orphan",
-          author: "test-user",
-        })
-      ).rejects.toThrow('Parent thread "nonexistent" not found');
+      await expect(create("Orphan", "nonexistent")).rejects.toThrow(
+        'Parent thread "nonexistent" not found'
+      );
     });
 
     it("handles duplicate titles with suffix", async () => {
+      await create("Feature");
+      const second = await create("Feature");
+      expect(second.metadata.id).toBe("feature-2");
+    });
+
+    it("links the thread to a git branch when given one", async () => {
       await threadService.create({
         projectId: "proj",
         parentId: "main",
-        title: "Feature",
+        title: "Auth UI",
         author: "test-user",
-      });
-      const second = await threadService.create({
-        projectId: "proj",
-        parentId: "main",
-        title: "Feature",
-        author: "test-user",
+        branch: "feature/auth-ui",
       });
 
-      expect(second.metadata.id).toBe("feature-2");
+      const node = await storage.readThread("proj", "auth-ui");
+      expect(node.metadata.branch).toBe("feature/auth-ui");
     });
   });
 
-  describe("switch", () => {
-    it("switches to an existing thread", async () => {
-      await threadService.create({
-        projectId: "proj",
-        parentId: "main",
-        title: "Target",
-        author: "test-user",
-      });
+  describe("create (robustness)", () => {
+    it("falls back to a readable ID for titles without Latin letters", async () => {
+      const first = await create("认证模块");
+      const second = await create("مصادقة");
 
-      await threadService.switch("proj", "target");
-      const state = await storage.readConfig();
-      expect(state.activeThreadId).toBe("target");
+      expect(first.metadata.id).toBe("thread");
+      expect(second.metadata.id).toBe("thread-2");
+      expect((await storage.readThread("proj", "thread-2")).metadata.title).toBe("مصادقة");
     });
 
-    it("throws on nonexistent thread", async () => {
-      await expect(threadService.switch("proj", "nope")).rejects.toThrow(
-        'Thread "nope" not found'
+    it("keeps multi-line titles on a single line", async () => {
+      const node = await create("Innocent\nid: ../../../PWNED");
+
+      expect(node.metadata.id).toBe("innocent-id-pwned");
+      const read = await storage.readThread("proj", node.metadata.id);
+      expect(read.metadata.title).toBe("Innocent id: ../../../PWNED");
+      expect(read.metadata.parentId).toBe("main");
+    });
+
+    it("keeps every thread when creations run in parallel", async () => {
+      await Promise.all(["A", "B", "C", "D", "E", "F"].map((title) => create(title)));
+
+      const tree = await storage.readTree("proj");
+      expect([...tree.nodes["main"].children].sort()).toEqual(["a", "b", "c", "d", "e", "f"]);
+    });
+
+    it("never overwrites an unreadable thread file", async () => {
+      const brokenPath = join(tempDir, "threads", "proj", "notes.md");
+      await writeFile(brokenPath, "Hand-written notes without frontmatter");
+
+      const node = await create("Notes");
+
+      expect(node.metadata.id).toBe("notes-2");
+      expect(await readFile(brokenPath, "utf-8")).toBe(
+        "Hand-written notes without frontmatter"
       );
     });
   });
 
   describe("list", () => {
-    it("returns an ASCII tree", async () => {
-      await threadService.create({
-        projectId: "proj",
-        parentId: "main",
-        title: "Branch A",
-        author: "test-user",
-      });
-      // Switch back to main so the next create goes under main
-      await threadService.switch("proj", "main");
-      await threadService.create({
-        projectId: "proj",
-        parentId: "main",
-        title: "Branch B",
-        author: "test-user",
-      });
-
-      const result = await threadService.list("proj");
-      expect(result).toContain("main");
-      expect(result).toContain("branch-a");
-      expect(result).toContain("branch-b");
-    });
-
     it("renders nested levels with connectors", async () => {
-      const create = (title: string, parentId: string) =>
-        threadService.create({ projectId: "proj", parentId, title, author: "test-user" });
-
-      await create("Auth", "main");
+      await create("Auth");
       await create("Auth UI", "auth");
       await create("Auth API", "auth");
-      await create("Dashboard", "main");
+      await create("Dashboard");
       await create("Charts", "dashboard");
-      await threadService.switch("proj", "auth-ui");
 
-      expect(await threadService.list("proj")).toBe(
+      expect(await threadService.list("proj", "auth-ui")).toBe(
         [
           "main",
           "├── auth",
@@ -159,14 +135,11 @@ describe("ThreadService", () => {
     });
 
     it("shows the title when the ID does not convey it", async () => {
-      const create = (title: string) =>
-        threadService.create({ projectId: "proj", parentId: "main", title, author: "test-user" });
-
       await create("Feature");
       await create("Feature");
       await create("认证模块");
 
-      expect(await threadService.list("proj")).toBe(
+      expect(await threadService.list("proj", "thread")).toBe(
         [
           "main",
           "├── feature",
@@ -175,79 +148,47 @@ describe("ThreadService", () => {
         ].join("\n")
       );
     });
-  });
 
-  describe("create (robustness)", () => {
-    it("falls back to a readable ID for titles without Latin letters", async () => {
-      const first = await threadService.create({
-        projectId: "proj", parentId: "main", title: "认证模块", author: "test-user",
-      });
-      const second = await threadService.create({
-        projectId: "proj", parentId: "main", title: "مصادقة", author: "test-user",
-      });
-
-      expect(first.metadata.id).toBe("thread");
-      expect(second.metadata.id).toBe("thread-2");
-      expect((await storage.readThread("proj", "thread-2")).metadata.title).toBe("مصادقة");
-    });
-
-    it("keeps multi-line titles on a single line", async () => {
-      const node = await threadService.create({
+    it("shows status and linked branch", async () => {
+      await threadService.create({
         projectId: "proj",
         parentId: "main",
-        title: "Innocent\nid: ../../../PWNED",
+        title: "Auth UI",
         author: "test-user",
+        branch: "feature/auth-ui",
+      });
+      await create("GraphQL");
+      await threadService.setStatus({
+        projectId: "proj",
+        threadId: "graphql",
+        status: "abandoned",
+        author: "test-user",
+        mode: "solo",
       });
 
-      expect(node.metadata.id).toBe("innocent-id-pwned");
-      const read = await storage.readThread("proj", node.metadata.id);
-      expect(read.metadata.title).toBe("Innocent id: ../../../PWNED");
-      expect(read.metadata.parentId).toBe("main");
-    });
-
-    it("keeps every thread when creations run in parallel", async () => {
-      const titles = ["A", "B", "C", "D", "E", "F"];
-      await Promise.all(
-        titles.map((title) =>
-          threadService.create({ projectId: "proj", parentId: "main", title, author: "test-user" })
-        )
+      expect(await threadService.list("proj", null)).toBe(
+        [
+          "main",
+          "├── auth-ui [branch: feature/auth-ui]",
+          "└── graphql [abandoned]",
+        ].join("\n")
       );
-
-      const tree = await storage.readTree("proj");
-      expect([...tree.nodes["main"].children].sort()).toEqual(["a", "b", "c", "d", "e", "f"]);
-    });
-
-    it("never overwrites a thread file that is missing from the tree", async () => {
-      await storage.writeThread("proj", {
-        metadata: {
-          id: "orphan",
-          title: "Orphan",
-          parentId: "main",
-          author: "test-user",
-          createdAt: "",
-          updatedAt: "",
-        },
-        content: "Precious summary.",
-      });
-
-      const node = await threadService.create({
-        projectId: "proj", parentId: "main", title: "Orphan", author: "test-user",
-      });
-
-      expect(node.metadata.id).toBe("orphan-2");
-      expect((await storage.readThread("proj", "orphan")).content).toBe("Precious summary.");
     });
   });
 
   describe("updateSummary", () => {
-    it("updates thread content", async () => {
-      await threadService.updateSummary({
+    const update = (opts: Partial<Parameters<ThreadServiceImpl["updateSummary"]>[0]>) =>
+      threadService.updateSummary({
         projectId: "proj",
         threadId: "main",
-        content: "Updated summary.",
+        content: "",
         author: "test-user",
         mode: "solo",
+        ...opts,
       });
+
+    it("updates thread content", async () => {
+      await update({ content: "Updated summary." });
 
       const node = await storage.readThread("proj", "main");
       expect(node.content).toBe("Updated summary.");
@@ -255,41 +196,22 @@ describe("ThreadService", () => {
 
     it("rejects update from non-owner in team mode", async () => {
       await expect(
-        threadService.updateSummary({
-          projectId: "proj",
-          threadId: "main",
-          content: "Hack!",
-          author: "other-user",
-          mode: "team",
-        })
+        update({ content: "Hack!", author: "other-user", mode: "team" })
       ).rejects.toThrow("Cannot update thread");
     });
 
-    it("rejects threads that are not in the tree", async () => {
-      await expect(
-        threadService.updateSummary({
-          projectId: "proj",
-          threadId: "ghost",
-          content: "x",
-          author: "test-user",
-          mode: "solo",
-        })
-      ).rejects.toThrow('Thread "ghost" not found');
+    it("rejects threads that do not exist", async () => {
+      await expect(update({ threadId: "ghost", content: "x" })).rejects.toThrow(
+        'Thread "ghost" not found'
+      );
     });
 
     it("lets the owner update a thread whose title contains ---", async () => {
-      const node = await threadService.create({
-        projectId: "proj",
-        parentId: "main",
-        title: "Refactor --- phase 2",
-        author: "test-user",
-      });
+      const node = await create("Refactor --- phase 2");
 
-      await threadService.updateSummary({
-        projectId: "proj",
+      await update({
         threadId: node.metadata.id,
         content: "New summary",
-        author: "test-user",
         mode: "team",
       });
 
@@ -298,29 +220,128 @@ describe("ThreadService", () => {
       expect(read.metadata.parentId).toBe("main");
       expect(read.content).toBe("New summary");
     });
+
+    it("adds to one section or replaces it", async () => {
+      await update({ content: "## Decisions\n- JWT\n\n## State\n- Login done" });
+
+      await update({ content: "- Refresh tokens", section: "decisions" });
+      await update({ content: "- Logout done", section: "state", replaceSection: true });
+      await update({ content: "- Rotate tokens?", section: "open-questions" });
+
+      expect((await storage.readThread("proj", "main")).content).toBe(
+        "## Decisions\n- JWT\n- Refresh tokens\n\n## State\n- Logout done\n\n## Open questions\n- Rotate tokens?"
+      );
+    });
+
+    it("records the commit and the paths the summary covers", async () => {
+      await update({ content: "x", commit: "a".repeat(40), paths: ["src/auth"] });
+      let node = await storage.readThread("proj", "main");
+      expect(node.metadata.commit).toBe("a".repeat(40));
+      expect(node.metadata.paths).toEqual(["src/auth"]);
+
+      // Paths are kept when not given, and cleared by an empty list
+      await update({ content: "y" });
+      expect((await storage.readThread("proj", "main")).metadata.paths).toEqual(["src/auth"]);
+      await update({ content: "z", paths: [] });
+      node = await storage.readThread("proj", "main");
+      expect(node.metadata.paths).toBeUndefined();
+    });
   });
 
-  describe("delete", () => {
-    it("deletes a thread and its descendants", async () => {
-      await threadService.create({
+  describe("setStatus", () => {
+    it("closes a thread and records the reason in its decisions", async () => {
+      await create("GraphQL");
+      await threadService.setStatus({
         projectId: "proj",
-        parentId: "main",
-        title: "Parent",
-        author: "test-user",
-      });
-      await threadService.create({
-        projectId: "proj",
-        parentId: "parent",
-        title: "Child",
-        author: "test-user",
-      });
-
-      await threadService.delete({
-        projectId: "proj",
-        threadId: "parent",
+        threadId: "graphql",
+        status: "abandoned",
+        reason: "REST is enough for our clients",
         author: "test-user",
         mode: "solo",
       });
+
+      const node = await storage.readThread("proj", "graphql");
+      expect(node.metadata.status).toBe("abandoned");
+      expect(node.content).toBe(
+        "## Decisions\n- Abandoned: REST is enough for our clients"
+      );
+    });
+
+    it("reopens a thread", async () => {
+      await create("Auth");
+      const close = (status: "done" | "active") =>
+        threadService.setStatus({
+          projectId: "proj",
+          threadId: "auth",
+          status,
+          author: "test-user",
+          mode: "solo",
+        });
+
+      await close("done");
+      await close("active");
+
+      expect((await storage.readThread("proj", "auth")).metadata.status).toBeUndefined();
+    });
+
+    it("never closes the main thread", async () => {
+      await expect(
+        threadService.setStatus({
+          projectId: "proj",
+          threadId: "main",
+          status: "done",
+          author: "test-user",
+          mode: "solo",
+        })
+      ).rejects.toThrow("The main thread cannot be closed");
+    });
+  });
+
+  describe("merge", () => {
+    it("replaces the parent's summary and marks the thread done", async () => {
+      await create("Auth");
+      const { parentId } = await threadService.merge({
+        projectId: "proj",
+        threadId: "auth",
+        parentSummary: "## Decisions\n- Auth uses JWT",
+        author: "test-user",
+        mode: "solo",
+      });
+
+      expect(parentId).toBe("main");
+      expect((await storage.readThread("proj", "main")).content).toBe(
+        "## Decisions\n- Auth uses JWT"
+      );
+      const merged = await storage.readThread("proj", "auth");
+      expect(merged.metadata.status).toBe("done");
+      expect(merged.metadata.mergedInto).toBe("main");
+    });
+
+    it("needs to own the parent in team mode", async () => {
+      await create("Auth", "main", "alice");
+
+      await expect(
+        threadService.merge({
+          projectId: "proj",
+          threadId: "auth",
+          parentSummary: "x",
+          author: "alice",
+          mode: "team",
+        })
+      ).rejects.toThrow('Cannot update thread "main"');
+      expect((await storage.readThread("proj", "auth")).metadata.status).toBeUndefined();
+    });
+  });
+
+  describe("delete", () => {
+    const remove = (threadId: string, author = "test-user", mode: "solo" | "team" = "solo") =>
+      threadService.delete({ projectId: "proj", threadId, author, mode });
+
+    it("deletes a thread and its descendants", async () => {
+      await create("Parent");
+      await create("Child", "parent");
+
+      expect((await remove("parent")).sort()).toEqual(["child", "parent"]);
 
       const tree = await storage.readTree("proj");
       expect(tree.nodes["parent"]).toBeUndefined();
@@ -329,59 +350,18 @@ describe("ThreadService", () => {
     });
 
     it("cannot delete main thread", async () => {
-      await expect(
-        threadService.delete({
-          projectId: "proj",
-          threadId: "main",
-          author: "test-user",
-          mode: "solo",
-        })
-      ).rejects.toThrow("Cannot delete the main thread");
-    });
-
-    it("resets active thread to main when active is deleted", async () => {
-      await threadService.create({
-        projectId: "proj",
-        parentId: "main",
-        title: "To Delete",
-        author: "test-user",
-      });
-
-      // Active thread is now "to-delete" (set by create)
-      await threadService.delete({
-        projectId: "proj",
-        threadId: "to-delete",
-        author: "test-user",
-        mode: "solo",
-      });
-
-      const state = await storage.readConfig();
-      expect(state.activeThreadId).toBe("main");
+      await expect(remove("main")).rejects.toThrow("Cannot delete the main thread");
     });
 
     it("rejects threads that are not in the tree", async () => {
-      await expect(
-        threadService.delete({
-          projectId: "proj",
-          threadId: "ghost",
-          author: "test-user",
-          mode: "solo",
-        })
-      ).rejects.toThrow('Thread "ghost" not found');
+      await expect(remove("ghost")).rejects.toThrow('Thread "ghost" not found');
     });
 
     it("refuses to cascade over teammates' threads in team mode", async () => {
-      await threadService.create({ projectId: "proj", parentId: "main", title: "Mine", author: "alice" });
-      await threadService.create({ projectId: "proj", parentId: "mine", title: "Theirs", author: "bob" });
+      await create("Mine", "main", "alice");
+      await create("Theirs", "mine", "bob");
 
-      await expect(
-        threadService.delete({
-          projectId: "proj",
-          threadId: "mine",
-          author: "alice",
-          mode: "team",
-        })
-      ).rejects.toThrow("theirs (bob)");
+      await expect(remove("mine", "alice", "team")).rejects.toThrow("theirs (bob)");
 
       const tree = await storage.readTree("proj");
       expect(tree.nodes["mine"]).toBeDefined();
@@ -390,77 +370,42 @@ describe("ThreadService", () => {
   });
 
   describe("rebase", () => {
-    it("moves a thread to a new parent and updates tree + frontmatter", async () => {
-      // Create: main → feature-a, main → feature-b
-      await threadService.create({ projectId: "proj", parentId: "main", title: "Feature A", author: "test-user" });
-      await threadService.switch("proj", "main");
-      await threadService.create({ projectId: "proj", parentId: "main", title: "Feature B", author: "test-user" });
+    const rebase = (threadId: string, newParentId: string, author = "test-user", mode: "solo" | "team" = "solo") =>
+      threadService.rebase({ projectId: "proj", threadId, newParentId, author, mode });
 
-      // Rebase feature-a under feature-b
-      await threadService.rebase({
-        projectId: "proj",
-        threadId: "feature-a",
-        newParentId: "feature-b",
-        author: "test-user",
-        mode: "solo",
-      });
+    it("moves a thread and its descendants to a new parent", async () => {
+      await create("Feature A");
+      await create("Deep", "feature-a");
+      await create("Feature B");
+
+      await rebase("feature-a", "feature-b");
 
       const tree = await storage.readTree("proj");
-      // feature-a is now under feature-b
       expect(tree.nodes["feature-b"].children).toContain("feature-a");
-      expect(tree.nodes["feature-a"].parentId).toBe("feature-b");
-      // feature-a is no longer under main
+      expect(tree.nodes["feature-a"].children).toEqual(["deep"]);
       expect(tree.nodes["main"].children).not.toContain("feature-a");
-
-      // Frontmatter is updated
-      const node = await storage.readThread("proj", "feature-a");
-      expect(node.metadata.parentId).toBe("feature-b");
+      expect((await storage.readThread("proj", "feature-a")).metadata.parentId).toBe("feature-b");
     });
 
     it("throws when attempting to create a circular reference", async () => {
-      await threadService.create({ projectId: "proj", parentId: "main", title: "Parent", author: "test-user" });
-      await threadService.create({ projectId: "proj", parentId: "parent", title: "Child", author: "test-user" });
+      await create("Parent");
+      await create("Child", "parent");
 
-      // Cannot rebase parent onto its own descendant (child)
-      await expect(
-        threadService.rebase({
-          projectId: "proj",
-          threadId: "parent",
-          newParentId: "child",
-          author: "test-user",
-          mode: "solo",
-        })
-      ).rejects.toThrow("is a descendant of");
+      await expect(rebase("parent", "child")).rejects.toThrow("is a descendant of");
     });
 
     it("cannot rebase the main thread", async () => {
-      await threadService.create({ projectId: "proj", parentId: "main", title: "Other", author: "test-user" });
-
-      await expect(
-        threadService.rebase({
-          projectId: "proj",
-          threadId: "main",
-          newParentId: "other",
-          author: "test-user",
-          mode: "solo",
-        })
-      ).rejects.toThrow("Cannot rebase the main thread");
+      await create("Other");
+      await expect(rebase("main", "other")).rejects.toThrow("Cannot rebase the main thread");
     });
 
     it("rejects rebase from non-owner in team mode", async () => {
-      await threadService.create({ projectId: "proj", parentId: "main", title: "Feature A", author: "alice" });
-      await threadService.switch("proj", "main");
-      await threadService.create({ projectId: "proj", parentId: "main", title: "Feature B", author: "bob" });
+      await create("Feature A", "main", "alice");
+      await create("Feature B", "main", "bob");
 
-      await expect(
-        threadService.rebase({
-          projectId: "proj",
-          threadId: "feature-a",
-          newParentId: "feature-b",
-          author: "bob",      // bob trying to move alice's thread
-          mode: "team",
-        })
-      ).rejects.toThrow("Cannot rebase thread");
+      await expect(rebase("feature-a", "feature-b", "bob", "team")).rejects.toThrow(
+        "Cannot rebase thread"
+      );
     });
   });
 });

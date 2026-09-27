@@ -1,8 +1,10 @@
-import type { ThreadMetadata } from "../types/index.js";
+import type { ThreadMetadata, ThreadStatus } from "../types/index.js";
 
 // Opening "---" line, optional block, then the first line that is exactly "---"
 const FRONTMATTER_BLOCK =
   /^---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/;
+
+const STATUSES: readonly ThreadStatus[] = ["active", "done", "abandoned"];
 
 export function parseFrontmatter(raw: string): {
   metadata: ThreadMetadata;
@@ -29,20 +31,30 @@ export function parseFrontmatter(raw: string): {
     fields[key] = value;
   }
 
-  return {
-    metadata: {
-      id: readValue(fields["id"]),
-      title: readValue(fields["title"]),
-      parentId:
-        fields["parentId"] === undefined || fields["parentId"] === "null"
-          ? null
-          : readValue(fields["parentId"]),
-      author: readValue(fields["author"]),
-      createdAt: readValue(fields["createdAt"]),
-      updatedAt: readValue(fields["updatedAt"]),
-    },
-    content,
+  const metadata: ThreadMetadata = {
+    id: readValue(fields["id"]),
+    title: readValue(fields["title"]),
+    parentId:
+      fields["parentId"] === undefined || fields["parentId"] === "null"
+        ? null
+        : readValue(fields["parentId"]),
+    author: readValue(fields["author"]),
+    createdAt: readValue(fields["createdAt"]),
+    updatedAt: readValue(fields["updatedAt"]),
   };
+
+  const status = readValue(fields["status"]) as ThreadStatus;
+  if (STATUSES.includes(status) && status !== "active") {
+    metadata.status = status;
+  }
+  for (const key of ["branch", "commit", "mergedInto"] as const) {
+    const value = readValue(fields[key]);
+    if (value) metadata[key] = value;
+  }
+  const paths = readList(fields["paths"]);
+  if (paths.length > 0) metadata.paths = paths;
+
+  return { metadata, content };
 }
 
 export function serializeFrontmatter(
@@ -57,10 +69,22 @@ export function serializeFrontmatter(
     `author: ${formatValue(metadata.author)}`,
     `createdAt: ${formatValue(metadata.createdAt)}`,
     `updatedAt: ${formatValue(metadata.updatedAt)}`,
-    "---",
-    "",
-    content,
   ];
+
+  // Optional fields are only written when set, so older files stay unchanged
+  if (metadata.status && metadata.status !== "active") {
+    lines.push(`status: ${metadata.status}`);
+  }
+  if (metadata.branch) lines.push(`branch: ${formatValue(metadata.branch)}`);
+  if (metadata.commit) lines.push(`commit: ${formatValue(metadata.commit)}`);
+  if (metadata.paths && metadata.paths.length > 0) {
+    lines.push(`paths: ${JSON.stringify(metadata.paths)}`);
+  }
+  if (metadata.mergedInto) {
+    lines.push(`mergedInto: ${formatValue(metadata.mergedInto)}`);
+  }
+
+  lines.push("---", "", content);
   return lines.join("\n");
 }
 
@@ -93,4 +117,17 @@ function readValue(raw: string | undefined): string {
     return raw.slice(1, -1).replace(/''/g, "'");
   }
   return raw;
+}
+
+/** Read a JSON array of strings (a valid YAML flow sequence). */
+function readList(raw: string | undefined): string[] {
+  if (!raw?.startsWith("[")) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : [];
+  } catch {
+    return [];
+  }
 }

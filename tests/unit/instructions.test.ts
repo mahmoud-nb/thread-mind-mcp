@@ -32,9 +32,9 @@ describe("serverInstructions", () => {
     }
   });
 
-  it("stays much shorter than the former CLAUDE.md section", () => {
+  it("stays shorter than the former CLAUDE.md section", () => {
     // The former generated section weighed about 3,100 characters
-    expect(serverInstructions().length).toBeLessThan(1600);
+    expect(serverInstructions().length).toBeLessThan(2500);
   });
 });
 

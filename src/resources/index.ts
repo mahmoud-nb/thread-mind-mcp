@@ -10,7 +10,7 @@ export function registerResources(
   server: McpServer,
   services: Services
 ): void {
-  const { storage, thread, context } = services;
+  const { storage, thread, context, session } = services;
 
   // --- threadmind://context ---
   server.registerResource(
@@ -19,23 +19,19 @@ export function registerResources(
     {
       title: "Active thread context",
       description:
-        "The assembled context for the active thread (walks up the parent chain)",
+        "The assembled context for the active thread: its summary plus the decisions and constraints of its ancestors",
       mimeType: "text/markdown",
     },
     async (uri) => {
-      const state = await storage.readConfig();
-      if (!state.activeProjectId) {
+      const active = await session.active();
+      if (!active) {
         return plainText(
           uri,
           "No active project or thread. Use project_create first."
         );
       }
 
-      const result = await context.assemble(
-        state.activeProjectId,
-        state.activeThreadId ?? "main"
-      );
-
+      const result = await context.assemble(active.projectId, active.threadId);
       return {
         contents: [
           {
@@ -58,12 +54,15 @@ export function registerResources(
       mimeType: "text/plain",
     },
     async (uri) => {
-      const state = await storage.readConfig();
-      if (!state.activeProjectId) {
+      const active = await session.active();
+      if (!active) {
         return plainText(uri, "No active project. Use project_create first.");
       }
 
-      return plainText(uri, await thread.list(state.activeProjectId));
+      return plainText(
+        uri,
+        await thread.list(active.projectId, active.threadId)
+      );
     }
   );
 
@@ -72,32 +71,21 @@ export function registerResources(
     "thread",
     new ResourceTemplate("threadmind://thread/{threadId}", {
       list: async () => {
-        const state = await storage.readConfig();
-        if (!state.activeProjectId) return { resources: [] };
+        const active = await session.active();
+        if (!active) return { resources: [] };
 
-        const projectId = state.activeProjectId;
-        const tree = await storage.readTree(projectId);
-        const resources = await Promise.all(
-          Object.keys(tree.nodes).map(async (threadId) => {
-            let title = threadId;
-            try {
-              const node = await storage.readThread(projectId, threadId);
-              title = node.metadata.title || threadId;
-            } catch {
-              // Missing thread file: list it by ID
-            }
-            return {
-              uri: `threadmind://thread/${threadId}`,
-              name: threadId,
-              title,
-              mimeType: "text/markdown",
-            };
-          })
-        );
-        return { resources };
+        const threads = await storage.listThreads(active.projectId);
+        return {
+          resources: threads.map(({ metadata }) => ({
+            uri: `threadmind://thread/${metadata.id}`,
+            name: metadata.id,
+            title: metadata.title || metadata.id,
+            mimeType: "text/markdown",
+          })),
+        };
       },
       complete: {
-        threadId: (value) => completeThreadIds(storage, value),
+        threadId: (value) => completeThreadIds(storage, session, value),
       },
     }),
     {
@@ -107,24 +95,36 @@ export function registerResources(
       mimeType: "text/markdown",
     },
     async (uri, variables) => {
-      const state = await storage.readConfig();
-      if (!state.activeProjectId) {
+      const active = await session.active();
+      if (!active) {
         throw new Error("No active ThreadMind project");
       }
 
       const raw = variables["threadId"];
       const threadId = Array.isArray(raw) ? raw[0] : raw;
-      const tree = await storage.readTree(state.activeProjectId);
-      if (!threadId || !tree.nodes[threadId]) {
+      if (
+        !threadId ||
+        !(await storage.threadExists(active.projectId, threadId).catch(() => false))
+      ) {
         throw new Error(`Thread "${threadId}" not found`);
       }
 
-      const node = await storage.readThread(state.activeProjectId, threadId);
-      const { title, parentId, author, updatedAt } = node.metadata;
+      const { metadata, content } = await storage.readThread(
+        active.projectId,
+        threadId
+      );
+      const details = [
+        `Thread \`${threadId}\``,
+        `parent: ${metadata.parentId ?? "none"}`,
+        metadata.status ? `status: ${metadata.status}` : null,
+        metadata.branch ? `branch: ${metadata.branch}` : null,
+        `author: ${metadata.author || "unknown"}`,
+        `updated: ${metadata.updatedAt || "never"}`,
+        metadata.paths ? `paths: ${metadata.paths.join(", ")}` : null,
+      ].filter(Boolean);
       const text =
-        `# ${title}\n\n` +
-        `_Thread \`${threadId}\` · parent: ${parentId ?? "none"} · author: ${author || "unknown"} · updated: ${updatedAt || "never"}_\n\n` +
-        (node.content || "(No summary yet.)");
+        `# ${metadata.title}\n\n_${details.join(" · ")}_\n\n` +
+        (content || "(No summary yet.)");
 
       return {
         contents: [{ uri: uri.href, mimeType: "text/markdown", text }],

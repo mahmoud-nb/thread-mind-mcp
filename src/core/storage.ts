@@ -4,22 +4,22 @@ import {
   mkdir,
   readdir,
   unlink,
-  rm,
   rename,
   open,
   access,
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { setTimeout as delay } from "node:timers/promises";
 import { parseFrontmatter, serializeFrontmatter } from "./frontmatter.js";
-import { assertValidId } from "./ids.js";
+import { ID_PATTERN, assertValidId } from "./ids.js";
 import { acquireFileLock } from "./lock.js";
 import type {
   AppState,
   ProjectConfig,
-  ProjectStats,
   ThreadNode,
+  TreeNode,
   TreeStructure,
   StorageService,
 } from "../types/index.js";
@@ -34,6 +34,7 @@ const DEFAULT_STATE: AppState = {
 export class StorageServiceImpl implements StorageService {
   private readonly dataDir: () => Promise<string>;
   private lockQueue: Promise<unknown> = Promise.resolve();
+  private readonly lockOwner = new AsyncLocalStorage<true>();
 
   /**
    * @param basePath the .threadmind directory, or a function resolving it
@@ -57,8 +58,6 @@ export class StorageServiceImpl implements StorageService {
     const base = await this.dataDir();
     await mkdir(join(base, "projects"), { recursive: true });
     await mkdir(join(base, "threads"), { recursive: true });
-    await mkdir(join(base, "trees"), { recursive: true });
-    await mkdir(join(base, "stats"), { recursive: true });
 
     // Create .gitignore to exclude config.json (per-user state)
     const gitignorePath = join(base, ".gitignore");
@@ -68,18 +67,12 @@ export class StorageServiceImpl implements StorageService {
       await writeFile(
         gitignorePath,
         [
-          "# Per-user state — never commit (each developer has their own active project/thread and author ID)",
+          "# Per-user state — never commit (each developer has their own active project/thread, author ID and session measurements)",
           "config.json",
           "",
           "# Transient lock and temporary files",
           ".lock",
           "*.tmp",
-          "",
-          "# Token savings statistics — optional",
-          "# Uncomment the line below to ignore stats/ if you prefer to avoid merge conflicts",
-          "# (every summary_update call modifies this file).",
-          "# Keep it committed if you want team-wide cumulative token savings tracking.",
-          "# stats/",
           "",
         ].join("\n"),
         "utf-8"
@@ -90,15 +83,18 @@ export class StorageServiceImpl implements StorageService {
   /**
    * Run a read-modify-write sequence exclusively: in-process through a
    * promise queue, across processes (several sessions on the same repository)
-   * through a lock file. Not re-entrant: never call withLock inside fn.
+   * through a lock file. Re-entrant: code that already holds the lock runs
+   * directly.
    */
   async withLock<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.lockOwner.getStore()) return fn();
+
     const run = this.lockQueue.then(async () => {
       const base = await this.dataDir();
       await mkdir(base, { recursive: true });
       const release = await acquireFileLock(join(base, ".lock"));
       try {
-        return await fn();
+        return await this.lockOwner.run(true, fn);
       } finally {
         await release();
       }
@@ -189,72 +185,77 @@ export class StorageServiceImpl implements StorageService {
 
   async threadExists(projectId: string, threadId: string): Promise<boolean> {
     const filePath = await this.threadFile(projectId, threadId);
-    try {
-      await access(filePath);
-      return true;
-    } catch {
-      return false;
-    }
+    return exists(filePath);
   }
 
-  // --- Trees ---
+  async listThreads(projectId: string): Promise<ThreadNode[]> {
+    await this.migrateLegacyTree(projectId);
+
+    let files: string[];
+    try {
+      files = await readdir(await this.resolve("threads", projectId));
+    } catch {
+      return [];
+    }
+
+    const threads = await Promise.all(
+      files
+        .filter((file) => file.endsWith(".md"))
+        .map(async (file) => {
+          const threadId = file.slice(0, -".md".length);
+          if (!ID_PATTERN.test(threadId)) return null;
+          try {
+            return await this.readThread(projectId, threadId);
+          } catch {
+            // Unreadable thread file: leave it out
+            return null;
+          }
+        })
+    );
+    return threads.filter((thread): thread is ThreadNode => thread !== null);
+  }
 
   async readTree(projectId: string): Promise<TreeStructure> {
-    const filePath = await this.treeFile(projectId);
-    try {
-      const raw = await readFile(filePath, "utf-8");
-      return JSON.parse(raw) as TreeStructure;
-    } catch {
-      return { nodes: {} };
-    }
+    return buildTree(await this.listThreads(projectId));
   }
 
-  async writeTree(projectId: string, tree: TreeStructure): Promise<void> {
-    await this.atomicWrite(
-      await this.treeFile(projectId),
-      JSON.stringify(tree, null, 2)
-    );
-  }
-
-  // --- Stats ---
-
-  async readProjectStats(projectId: string): Promise<ProjectStats> {
-    const filePath = await this.statsFile(projectId);
-    try {
-      const raw = await readFile(filePath, "utf-8");
-      return JSON.parse(raw) as ProjectStats;
-    } catch {
-      return { projectId, threads: {} };
-    }
-  }
-
-  async writeProjectStats(
-    projectId: string,
-    stats: ProjectStats
-  ): Promise<void> {
-    await this.atomicWrite(
-      await this.statsFile(projectId),
-      JSON.stringify(stats, null, 2)
-    );
-  }
-
-  // --- Cleanup ---
-
-  async deleteProjectDir(projectId: string): Promise<void> {
+  /**
+   * Earlier versions kept the tree in trees/<project>.json, duplicating the
+   * parentId of each thread file. That index was the one actually used, so it
+   * wins: thread files are aligned on it, then it is deleted.
+   */
+  private async migrateLegacyTree(projectId: string): Promise<void> {
     assertValidId(projectId, "project");
-    try {
-      await rm(await this.resolve("threads", projectId), {
-        recursive: true,
-        force: true,
-      });
-    } catch {
-      // Directory may not exist
-    }
-    try {
-      await unlink(await this.statsFile(projectId));
-    } catch {
-      // Stats file may not exist
-    }
+    const legacyPath = await this.resolve("trees", `${projectId}.json`);
+    if (!(await exists(legacyPath))) return;
+
+    await this.withLock(async () => {
+      let legacy: TreeStructure;
+      try {
+        legacy = JSON.parse(await readFile(legacyPath, "utf-8"));
+      } catch {
+        // Already migrated by another session
+        return;
+      }
+
+      for (const [threadId, node] of Object.entries(legacy.nodes ?? {})) {
+        const parentId = node?.parentId ?? null;
+        if (!ID_PATTERN.test(threadId)) continue;
+        if (parentId !== null && !ID_PATTERN.test(parentId)) continue;
+
+        let thread: ThreadNode;
+        try {
+          thread = await this.readThread(projectId, threadId);
+        } catch {
+          continue;
+        }
+        if (thread.metadata.parentId !== parentId) {
+          thread.metadata.parentId = parentId;
+          await this.writeThread(projectId, thread);
+        }
+      }
+      await unlink(legacyPath).catch(() => {});
+    });
   }
 
   // --- Paths (every ID is validated before it becomes part of a path) ---
@@ -275,16 +276,6 @@ export class StorageServiceImpl implements StorageService {
     assertValidId(projectId, "project");
     assertValidId(threadId, "thread");
     return this.resolve("threads", projectId, `${threadId}.md`);
-  }
-
-  private async treeFile(projectId: string): Promise<string> {
-    assertValidId(projectId, "project");
-    return this.resolve("trees", `${projectId}.json`);
-  }
-
-  private async statsFile(projectId: string): Promise<string> {
-    assertValidId(projectId, "project");
-    return this.resolve("stats", `${projectId}.json`);
   }
 
   // --- Helpers ---
@@ -308,6 +299,43 @@ export class StorageServiceImpl implements StorageService {
       await unlink(tmpPath).catch(() => {});
       throw error;
     }
+  }
+}
+
+/**
+ * Build the tree from each thread's parentId. Children are ordered by
+ * creation date; a thread whose parent is missing becomes a root, so it stays
+ * visible.
+ */
+export function buildTree(threads: ThreadNode[]): TreeStructure {
+  const nodes: Record<string, TreeNode> = {};
+  for (const { metadata } of threads) {
+    nodes[metadata.id] = { parentId: metadata.parentId, children: [] };
+  }
+
+  const ordered = [...threads].sort(
+    (a, b) =>
+      a.metadata.createdAt.localeCompare(b.metadata.createdAt) ||
+      a.metadata.id.localeCompare(b.metadata.id)
+  );
+  for (const { metadata } of ordered) {
+    const node = nodes[metadata.id];
+    const parent = node.parentId !== null ? nodes[node.parentId] : undefined;
+    if (!parent || node.parentId === metadata.id) {
+      node.parentId = null;
+      continue;
+    }
+    parent.children.push(metadata.id);
+  }
+  return { nodes };
+}
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
   }
 }
 

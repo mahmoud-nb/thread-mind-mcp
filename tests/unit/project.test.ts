@@ -46,10 +46,8 @@ describe("ProjectService", () => {
       const tree = await storage.readTree("my-project");
       expect(tree.nodes["main"]).toBeDefined();
 
-      // Verify state was updated
+      // The author is created with the first project
       const state = await storage.readConfig();
-      expect(state.activeProjectId).toBe("my-project");
-      expect(state.activeThreadId).toBe("main");
       expect(state.author).toBeTruthy();
     });
 
@@ -124,32 +122,16 @@ describe("ProjectService", () => {
     });
   });
 
-  describe("switch", () => {
-    it("switches active project", async () => {
-      await projectService.create({ title: "First" });
-      await projectService.create({ title: "Second" });
-
-      await projectService.switch("first");
-      const state = await storage.readConfig();
-      expect(state.activeProjectId).toBe("first");
-      expect(state.activeThreadId).toBe("main");
+  describe("get", () => {
+    it("returns a project's config", async () => {
+      await projectService.create({ title: "First", mode: "team" });
+      expect((await projectService.get("first")).mode).toBe("team");
     });
 
     it("throws on nonexistent project", async () => {
-      await expect(projectService.switch("nonexistent")).rejects.toThrow();
-    });
-  });
-
-  describe("getActive", () => {
-    it("returns null when no active project", async () => {
-      const active = await projectService.getActive();
-      expect(active).toBeNull();
-    });
-
-    it("returns active project config", async () => {
-      await projectService.create({ title: "Active" });
-      const active = await projectService.getActive();
-      expect(active?.id).toBe("active");
+      await expect(projectService.get("nonexistent")).rejects.toThrow(
+        'Project "nonexistent" not found'
+      );
     });
   });
 });

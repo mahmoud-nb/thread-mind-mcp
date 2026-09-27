@@ -14,11 +14,11 @@ export function registerPrompts(
   server: McpServer,
   services: Services
 ): void {
-  const { storage, context, thread, stats } = services;
+  const { storage, context, thread, stats, session } = services;
 
   const threadIdArg = (description: string) =>
     completable(z.string().describe(description), (value) =>
-      completeThreadIds(storage, value)
+      completeThreadIds(storage, session, value)
     );
 
   // ==========================================================================
@@ -26,13 +26,12 @@ export function registerPrompts(
   // ==========================================================================
 
   const loadContext = async () => {
-    const state = await storage.readConfig();
-    if (!state.activeProjectId) return userMessage(NO_PROJECT);
+    const active = await session.active();
+    if (!active) return userMessage(NO_PROJECT);
 
-    const threadId = state.activeThreadId ?? "main";
-    const result = await context.assemble(state.activeProjectId, threadId);
+    const result = await context.assemble(active.projectId, active.threadId);
     return userMessage(
-      `Here is the ThreadMind context of the active thread "${threadId}". Use it as your working context:\n\n${formatContext(result)}`
+      `Here is the ThreadMind context of the active thread "${active.threadId}". Use it as your working context:\n\n${formatContext(result)}`
     );
   };
 
@@ -62,10 +61,10 @@ export function registerPrompts(
       description: "Show the thread tree of the active project",
     },
     async () => {
-      const state = await storage.readConfig();
-      if (!state.activeProjectId) return userMessage(NO_PROJECT);
+      const active = await session.active();
+      if (!active) return userMessage(NO_PROJECT);
 
-      const tree = await thread.list(state.activeProjectId);
+      const tree = await thread.list(active.projectId, active.threadId);
       return userMessage(
         `Show the user this ThreadMind thread tree:\n\n\`\`\`\n${tree}\n\`\`\``
       );
@@ -75,28 +74,22 @@ export function registerPrompts(
   server.registerPrompt(
     "tm-stats",
     {
-      title: "Show token statistics",
-      description: "Show token savings statistics of the active project",
+      title: "Show statistics",
+      description:
+        "Show summary sizes and measured conversation sizes of the active project",
     },
     async () => {
-      const state = await storage.readConfig();
-      if (!state.activeProjectId) return userMessage(NO_PROJECT);
+      const active = await session.active();
+      if (!active) return userMessage(NO_PROJECT);
 
-      const projectConfig = await storage.readProjectConfig(
-        state.activeProjectId
-      );
-      const projectStats = await stats.getProjectStats(state.activeProjectId);
-      const result = await context.assemble(
-        state.activeProjectId,
-        state.activeThreadId ?? "main"
-      );
-      const tree = await storage.readTree(state.activeProjectId);
-
+      const projectConfig = await storage.readProjectConfig(active.projectId);
+      const result = await context.assemble(active.projectId, active.threadId);
       const report = formatStatsReport({
         projectTitle: projectConfig.title,
-        stats: projectStats,
-        threadCount: Object.keys(tree.nodes).length,
+        threads: await storage.listThreads(active.projectId),
+        activeThreadId: active.threadId,
         context: result,
+        sessions: await stats.sessions(),
       });
       return userMessage(
         `Show the user these ThreadMind statistics:\n\n\`\`\`\n${report}\n\`\`\``
@@ -111,9 +104,9 @@ export function registerPrompts(
       description: "Show all available ThreadMind commands and tools",
     },
     async () => {
-      const state = await storage.readConfig();
-      const statusLine = state.activeProjectId
-        ? `\nActive project: **${state.activeProjectId}** | Active thread: **${state.activeThreadId ?? "main"}**\n`
+      const active = await session.active();
+      const statusLine = active
+        ? `\nActive project: **${active.projectId}** | Active thread: **${active.threadId}**\n`
         : "";
       const shortcuts = SHORTCUTS.map(([s, a]) => `| \`${s}\` | ${a} |`).join(
         "\n"
@@ -134,15 +127,17 @@ ${shortcuts}
 | \`project_create\` | Create a new project |
 | \`project_list\` | List all projects |
 | \`project_switch\` | Switch project |
-| \`thread_create\` | Create child thread |
+| \`thread_create\` | Create child thread (linked to the current feature branch) |
 | \`thread_switch\` | Switch thread and load its context |
 | \`thread_list\` | Show thread tree |
+| \`thread_status\` | Mark a thread done, abandoned or active |
+| \`thread_merge\` | Fold a finished thread into its parent |
 | \`thread_delete\` | Delete thread + descendants |
 | \`thread_rebase\` | Move thread to a different parent |
-| \`summary_update\` | Update thread summary |
+| \`summary_update\` | Update a thread summary, or one of its sections |
 | \`context_get\` | Get assembled context |
 | \`threadmind_init\` | Generate instruction files for other AI agents |
-| \`stats_show\` | Token savings statistics |
+| \`stats_show\` | Summary sizes and measured conversation sizes |
 
 ### MCP Prompts (slash commands in Claude Code)
 \`tm-context\`, \`tm-tree\`, \`tm-stats\`, \`tm-create\`, \`tm-switch\`, \`tm-summary\`, \`tm-rebase\`, \`tm-init\` and \`tm-help\` are available as \`/mcp__thread-mind__<name>\`.`);
@@ -212,13 +207,13 @@ ${shortcuts}
       );
     }
 
-    const state = await storage.readConfig();
-    const threadId = state.activeThreadId ?? "main";
+    const active = await session.active();
+    const threadId = active?.threadId ?? "main";
 
     let currentSummary = "";
-    if (state.activeProjectId) {
+    if (active) {
       try {
-        const node = await storage.readThread(state.activeProjectId, threadId);
+        const node = await storage.readThread(active.projectId, threadId);
         currentSummary = node.content
           ? `\n\nCurrent summary (to update/replace):\n${node.content}`
           : "";
@@ -229,17 +224,18 @@ ${shortcuts}
 
     const topicHint = topic ? `\nThe discussion was about: ${topic}` : "";
 
-    return userMessage(`Please generate a concise summary (5-15 lines) for the current ThreadMind thread "${threadId}".${topicHint}${currentSummary}
+    return userMessage(`Please write the summary of the current ThreadMind thread "${threadId}".${topicHint}${currentSummary}
 
-The summary should capture:
-- **Decisions made** and their rationale
-- **Technical choices** and trade-offs considered
-- **Current state** of the implementation
-- **Open questions** or next steps (if any)
+Use these sections, leaving out the empty ones:
+## Decisions — what was decided and why
+## Constraints — requirements and limits that must keep holding
+## State — where the work stands
+## Open questions
+## Next steps
 
-Format the summary as clean markdown. Focus on WHAT was decided and WHY — not on the conversation itself. The summary should be self-contained: a developer reading it with no prior context should understand the current state. It replaces the current summary, so keep what is still true.
+Child threads inherit only Decisions and Constraints, so put anything durable there. Focus on WHAT was decided and WHY — not on the conversation itself. The summary should be self-contained: a developer reading it with no prior context should understand the current state. It replaces the current summary, so keep what is still true.
 
-After generating the summary, call \`summary_update\` with the content to save it.`);
+Then call \`summary_update\` with the content to save it, with \`paths\` listing the files or directories this thread is about.`);
   };
 
   server.registerPrompt(

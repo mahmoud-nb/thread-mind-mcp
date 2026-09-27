@@ -1,134 +1,108 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { StorageServiceImpl } from "../../src/core/storage.js";
 import {
   ContextServiceImpl,
   estimateTokens,
+  formatContext,
 } from "../../src/core/context.js";
+import type { ThreadMetadata } from "../../src/types/index.js";
 
-let tempDir: string;
+// Stands for the repository: ThreadMind data lives in root/.threadmind
+let root: string;
 let storage: StorageServiceImpl;
 let context: ContextServiceImpl;
 
+async function project(systemContext = "") {
+  await storage.writeProjectConfig({
+    id: "proj",
+    title: "Test",
+    systemContext,
+    mode: "solo",
+    rootThreadId: "main",
+  });
+}
+
+async function thread(
+  id: string,
+  parentId: string | null,
+  content: string,
+  extra: Partial<ThreadMetadata> = {}
+) {
+  await storage.writeThread("proj", {
+    metadata: {
+      id,
+      title: id[0].toUpperCase() + id.slice(1),
+      parentId,
+      author: "user",
+      createdAt: "",
+      updatedAt: "",
+      ...extra,
+    },
+    content,
+  });
+}
+
+function git(...args: string[]): string {
+  return execFileSync(
+    "git",
+    ["-c", "user.name=Test", "-c", "user.email=test@example.com", ...args],
+    { cwd: root, encoding: "utf-8" }
+  ).trim();
+}
+
+async function commitFile(path: string, content: string): Promise<string> {
+  await mkdir(join(root, path, ".."), { recursive: true });
+  await writeFile(join(root, path), content);
+  git("add", path);
+  git("commit", "-q", "-m", `change ${path}`);
+  return git("rev-parse", "HEAD");
+}
+
 beforeEach(async () => {
-  tempDir = await mkdtemp(join(tmpdir(), "threadmind-ctx-"));
-  storage = new StorageServiceImpl(tempDir);
+  root = await mkdtemp(join(tmpdir(), "threadmind-ctx-"));
+  storage = new StorageServiceImpl(join(root, ".threadmind"));
   await storage.ensureInitialized();
   context = new ContextServiceImpl(storage);
 });
 
 afterEach(async () => {
-  await rm(tempDir, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
 });
 
 describe("estimateTokens", () => {
   it("estimates tokens from text length", () => {
     // ~3.5 chars per token
-    const tokens = estimateTokens("Hello world"); // 11 chars
-    expect(tokens).toBeGreaterThan(0);
-    expect(tokens).toBe(Math.ceil(11 / 3.5));
+    expect(estimateTokens("Hello world")).toBe(Math.ceil(11 / 3.5));
   });
 
   it("returns 0 for empty string", () => {
     expect(estimateTokens("")).toBe(0);
   });
-
-  it("scales with text length", () => {
-    const short = estimateTokens("short");
-    const long = estimateTokens("a".repeat(1000));
-    expect(long).toBeGreaterThan(short);
-  });
 });
 
 describe("ContextService", () => {
   it("assembles context from a single root thread", async () => {
-    await storage.writeProjectConfig({
-      id: "proj",
-      title: "Test",
-      systemContext: "Be helpful.",
-      mode: "solo",
-      rootThreadId: "main",
-    });
-
-    await storage.writeThread("proj", {
-      metadata: {
-        id: "main",
-        title: "Main Thread",
-        parentId: null,
-        author: "user",
-        createdAt: "",
-        updatedAt: "",
-      },
-      content: "Project overview.",
-    });
-
-    await storage.writeTree("proj", {
-      nodes: { main: { parentId: null, children: [] } },
-    });
+    await project("Be helpful.");
+    await thread("main", null, "Project overview.");
 
     const result = await context.assemble("proj", "main");
     expect(result.text).toContain("## System Context");
     expect(result.text).toContain("Be helpful.");
-    expect(result.text).toContain("## Thread: Main Thread (active)");
+    expect(result.text).toContain("## Thread: Main (active)");
     expect(result.text).toContain("Project overview.");
     expect(result.tokens).toBeGreaterThan(0);
     expect(result.threadDepth).toBe(1);
   });
 
   it("assembles context walking up a 3-level chain", async () => {
-    await storage.writeProjectConfig({
-      id: "proj",
-      title: "Test",
-      systemContext: "",
-      mode: "solo",
-      rootThreadId: "main",
-    });
-
-    await storage.writeThread("proj", {
-      metadata: {
-        id: "main",
-        title: "Root",
-        parentId: null,
-        author: "user",
-        createdAt: "",
-        updatedAt: "",
-      },
-      content: "Root context.",
-    });
-
-    await storage.writeThread("proj", {
-      metadata: {
-        id: "child",
-        title: "Child",
-        parentId: "main",
-        author: "user",
-        createdAt: "",
-        updatedAt: "",
-      },
-      content: "Child context.",
-    });
-
-    await storage.writeThread("proj", {
-      metadata: {
-        id: "grandchild",
-        title: "Grandchild",
-        parentId: "child",
-        author: "user",
-        createdAt: "",
-        updatedAt: "",
-      },
-      content: "Grandchild context.",
-    });
-
-    await storage.writeTree("proj", {
-      nodes: {
-        main: { parentId: null, children: ["child"] },
-        child: { parentId: "main", children: ["grandchild"] },
-        grandchild: { parentId: "child", children: [] },
-      },
-    });
+    await project();
+    await thread("main", null, "Root context.");
+    await thread("child", "main", "Child context.");
+    await thread("grandchild", "child", "Grandchild context.");
 
     const result = await context.assemble("proj", "grandchild");
 
@@ -136,99 +110,89 @@ describe("ContextService", () => {
     const rootIdx = result.text.indexOf("Root context.");
     const childIdx = result.text.indexOf("Child context.");
     const grandchildIdx = result.text.indexOf("Grandchild context.");
-
     expect(rootIdx).toBeLessThan(childIdx);
     expect(childIdx).toBeLessThan(grandchildIdx);
     expect(result.text).toContain("Grandchild (active)");
-    expect(result.text).not.toContain("Root (active)");
+    expect(result.text).not.toContain("Main (active)");
     expect(result.threadDepth).toBe(3);
   });
 
   it("skips empty summaries", async () => {
-    await storage.writeProjectConfig({
-      id: "proj",
-      title: "Test",
-      systemContext: "",
-      mode: "solo",
-      rootThreadId: "main",
-    });
-
-    await storage.writeThread("proj", {
-      metadata: {
-        id: "main",
-        title: "Root",
-        parentId: null,
-        author: "user",
-        createdAt: "",
-        updatedAt: "",
-      },
-      content: "",
-    });
-
-    await storage.writeThread("proj", {
-      metadata: {
-        id: "child",
-        title: "Child",
-        parentId: "main",
-        author: "user",
-        createdAt: "",
-        updatedAt: "",
-      },
-      content: "Has content.",
-    });
-
-    await storage.writeTree("proj", {
-      nodes: {
-        main: { parentId: null, children: ["child"] },
-        child: { parentId: "main", children: [] },
-      },
-    });
+    await project();
+    await thread("main", null, "");
+    await thread("child", "main", "Has content.");
 
     const result = await context.assemble("proj", "child");
-    expect(result.text).not.toContain("## Thread: Root");
+    expect(result.text).not.toContain("## Thread: Main");
     expect(result.text).toContain("## Thread: Child (active)");
   });
 
+  it("passes on only the durable sections of ancestors", async () => {
+    await project();
+    await thread(
+      "main",
+      null,
+      "## Decisions\n- Monorepo\n\n## State\n- Setting up CI\n\n## Next steps\n- Add linting"
+    );
+    await thread("child", "main", "## Decisions\n- JWT\n\n## State\n- Login done");
+
+    const result = await context.assemble("proj", "child");
+    expect(result.text).toContain("- Monorepo");
+    expect(result.text).not.toContain("Setting up CI");
+    expect(result.text).not.toContain("Add linting");
+    // The active thread keeps its whole summary
+    expect(result.text).toContain("## State\n- Login done");
+  });
+
+  it("marks closed threads", async () => {
+    await project();
+    await thread("main", null, "Root.");
+    await thread("child", "main", "Done work.", { status: "done" });
+
+    const result = await context.assemble("proj", "child");
+    expect(result.text).toContain("## Thread: Child [done] (active)");
+  });
+
+  it("leaves out the farthest ancestors to fit a token budget", async () => {
+    await project();
+    await thread("main", null, "r".repeat(700));
+    await thread("child", "main", "c".repeat(700));
+    await thread("leaf", "child", "Leaf summary.");
+
+    const result = await context.assemble("proj", "leaf", { maxTokens: 250 });
+
+    expect(result.omitted).toEqual(["main"]);
+    expect(result.text).not.toContain("## Thread: Main");
+    expect(result.text).toContain("## Thread: Child");
+    expect(result.tokens).toBeLessThanOrEqual(250);
+    expect(formatContext(result)).toContain(
+      "_Left out to fit the token budget: main"
+    );
+  });
+
+  it("cuts the active thread when it alone exceeds the budget", async () => {
+    await project();
+    await thread("main", null, "m".repeat(2000));
+
+    const result = await context.assemble("proj", "main", { maxTokens: 100 });
+    expect(result.truncated).toBe(true);
+    expect(result.tokens).toBeLessThanOrEqual(100);
+  });
+
+  it("rejects unknown threads", async () => {
+    await project();
+    await thread("main", null, "Root.");
+
+    await expect(context.assemble("proj", "ghost")).rejects.toThrow(
+      'Thread "ghost" not found'
+    );
+  });
+
   it("detects circular references", async () => {
-    await storage.writeProjectConfig({
-      id: "proj",
-      title: "Test",
-      systemContext: "",
-      mode: "solo",
-      rootThreadId: "main",
-    });
-
-    // Create a circular tree: A → B → A
-    await storage.writeThread("proj", {
-      metadata: {
-        id: "a",
-        title: "A",
-        parentId: "b",
-        author: "user",
-        createdAt: "",
-        updatedAt: "",
-      },
-      content: "A content.",
-    });
-
-    await storage.writeThread("proj", {
-      metadata: {
-        id: "b",
-        title: "B",
-        parentId: "a",
-        author: "user",
-        createdAt: "",
-        updatedAt: "",
-      },
-      content: "B content.",
-    });
-
-    await storage.writeTree("proj", {
-      nodes: {
-        a: { parentId: "b", children: [] },
-        b: { parentId: "a", children: [] },
-      },
-    });
+    await project();
+    // A hand-edited cycle: A → B → A
+    await thread("a", "b", "A content.");
+    await thread("b", "a", "B content.");
 
     await expect(context.assemble("proj", "a")).rejects.toThrow(
       "Circular reference detected"
@@ -236,38 +200,71 @@ describe("ContextService", () => {
   });
 
   it("respects MAX_DEPTH limit", async () => {
-    await storage.writeProjectConfig({
-      id: "proj",
-      title: "Test",
-      systemContext: "",
-      mode: "solo",
-      rootThreadId: "t-0",
-    });
-
+    await project();
     // Create a chain of 60 threads (exceeds MAX_DEPTH of 50)
-    const nodes: Record<string, { parentId: string | null; children: string[] }> = {};
     for (let i = 0; i < 60; i++) {
-      const id = `t-${i}`;
-      const parentId = i === 0 ? null : `t-${i - 1}`;
-      nodes[id] = { parentId, children: i < 59 ? [`t-${i + 1}`] : [] };
-
-      await storage.writeThread("proj", {
-        metadata: {
-          id,
-          title: `Thread ${i}`,
-          parentId,
-          author: "user",
-          createdAt: "",
-          updatedAt: "",
-        },
-        content: `Content ${i}.`,
-      });
+      await thread(`t-${i}`, i === 0 ? null : `t-${i - 1}`, `Content ${i}.`);
     }
-
-    await storage.writeTree("proj", { nodes });
 
     // Assembling from t-59 should stop at depth 50, not crash
     const result = await context.assemble("proj", "t-59");
     expect(result.threadDepth).toBeLessThanOrEqual(50);
+  });
+
+  describe("outdated summaries", () => {
+    beforeEach(() => {
+      git("init", "-q", "-b", "main");
+    });
+
+    it("flags summaries whose paths changed since they were written", async () => {
+      const written = await commitFile("src/auth/jwt.ts", "v1");
+      await commitFile("src/auth/jwt.ts", "v2");
+      await commitFile("docs/readme.md", "unrelated");
+      await project();
+      await thread("main", null, "Auth uses JWT.", {
+        commit: written,
+        paths: ["src/auth"],
+      });
+
+      const result = await context.assemble("proj", "main");
+      expect(result.text).toContain(
+        "_⚠ 1 commit changed src/auth since this summary was written: check it is still accurate._"
+      );
+    });
+
+    it("stays quiet when the paths did not change", async () => {
+      const written = await commitFile("src/auth/jwt.ts", "v1");
+      await commitFile("docs/readme.md", "unrelated");
+      await project();
+      await thread("main", null, "Auth uses JWT.", {
+        commit: written,
+        paths: ["src/auth"],
+      });
+
+      const result = await context.assemble("proj", "main");
+      expect(result.text).not.toContain("⚠");
+    });
+
+    it("gives the age of summaries without paths", async () => {
+      const written = await commitFile("a.txt", "1");
+      await commitFile("b.txt", "2");
+      await commitFile("c.txt", "3");
+      await project();
+      await thread("main", null, "Overview.", { commit: written });
+
+      const result = await context.assemble("proj", "main");
+      expect(result.text).toContain("_Written 2 commits ago._");
+    });
+
+    it("warns about commits missing from the history", async () => {
+      await commitFile("a.txt", "1");
+      await project();
+      await thread("main", null, "Overview.", { commit: "0123456789abcdef0123456789abcdef01234567" });
+
+      const result = await context.assemble("proj", "main");
+      expect(result.text).toContain(
+        "_⚠ Written on commit 0123456, which is not in this repository's history"
+      );
+    });
   });
 });

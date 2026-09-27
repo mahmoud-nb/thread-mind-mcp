@@ -14,6 +14,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { createServer } from "../../src/server.js";
 import type { Services } from "../../src/types/index.js";
+import { commitFile, git } from "../helpers/git.js";
 
 // Stands for the user's repository; ThreadMind data lives in root/.threadmind
 let root: string;
@@ -210,7 +211,7 @@ describe("MCP server (end to end)", () => {
 describe("MCP integration", () => {
   it("declares a title and annotations for every tool", async () => {
     const { tools } = await client.listTools();
-    expect(tools).toHaveLength(12);
+    expect(tools).toHaveLength(14);
     for (const tool of tools) {
       expect(tool.title, tool.name).toBeTruthy();
       expect(tool.annotations?.openWorldHint, tool.name).toBe(false);
@@ -222,7 +223,9 @@ describe("MCP integration", () => {
     }
     expect(byName["thread_delete"].annotations?.destructiveHint).toBe(true);
     expect(byName["summary_update"].annotations?.destructiveHint).toBe(true);
+    expect(byName["thread_merge"].annotations?.destructiveHint).toBe(true);
     expect(byName["thread_create"].annotations?.destructiveHint).toBe(false);
+    expect(byName["thread_status"].annotations?.destructiveHint).toBe(false);
   });
 
   it("sends usage instructions to the client", () => {
@@ -240,12 +243,25 @@ describe("MCP integration", () => {
 
   it("points to existing projects when none is active", async () => {
     await call("project_create", { title: "Team App" });
+    await call("project_create", { title: "Other" });
+    // A teammate's fresh clone: several projects, none selected yet
+    const clone = await connect(createServer(join(root, ".threadmind")).server);
     await rm(join(root, ".threadmind", "config.json"));
 
-    const result = await call("thread_list");
-    expect(result.text).toContain(
-      "Existing projects: team-app. Use project_switch to select one."
-    );
+    const result = await call("thread_list", {}, clone);
+    expect(result.text).toContain("No active project. Existing projects:");
+    expect(result.text).toContain("team-app");
+    expect(result.text).toContain("other");
+    await clone.close();
+  });
+
+  it("selects the only project after a fresh clone", async () => {
+    await call("project_create", { title: "Team App" });
+    await rm(join(root, ".threadmind", "config.json"));
+    const clone = await connect(createServer(join(root, ".threadmind")).server);
+
+    expect((await call("thread_list", {}, clone)).text).toBe("main ← active");
+    await clone.close();
   });
 
   it("returns the full context when switching threads", async () => {
@@ -335,6 +351,114 @@ describe("MCP integration", () => {
     await call("thread_delete", { threadId: "auth" });
 
     await vi.waitFor(() => expect(notifications).toBe(3));
+  });
+});
+
+describe("sessions, summaries and git", () => {
+  /** Another client session on the same repository. */
+  const otherSession = () =>
+    connect(createServer(join(root, ".threadmind")).server);
+
+  it("keeps one active thread per session", async () => {
+    await call("project_create", { title: "Shop" });
+    await call("thread_create", { title: "Auth" });
+    await call("thread_create", { title: "Billing", parentId: "main" });
+
+    const other = await otherSession();
+    try {
+      // The new session starts where the last one left off
+      expect((await call("thread_list", {}, other)).text).toContain("billing ← active");
+
+      await call("thread_switch", { threadId: "auth" });
+
+      expect((await call("thread_list", {}, other)).text).toContain("billing ← active");
+      expect((await call("thread_list")).text).toContain("auth ← active");
+    } finally {
+      await other.close();
+    }
+  });
+
+  it("updates one section and passes on only durable sections", async () => {
+    await call("project_create", { title: "Shop" });
+    await call("summary_update", {
+      content: "## Decisions\n- Next.js\n\n## State\n- Setting up CI",
+    });
+    await call("thread_create", { title: "Auth" });
+
+    const added = await call("summary_update", {
+      content: "- JWT with refresh tokens",
+      section: "decisions",
+    });
+    expect(added.text).toBe('Section "decisions" of the summary updated for thread "auth".');
+
+    const { text } = await call("context_get");
+    expect(text).toContain("- Next.js");
+    expect(text).not.toContain("Setting up CI");
+    expect(text).toContain("## Thread: Auth (active)\n\n## Decisions\n- JWT with refresh tokens");
+  });
+
+  it("closes and merges threads", async () => {
+    await call("project_create", { title: "Shop" });
+    await call("thread_create", { title: "GraphQL" });
+    const closed = await call("thread_status", {
+      status: "abandoned",
+      reason: "REST is enough",
+    });
+    expect(closed.text).toContain("graphql [abandoned]");
+
+    await call("thread_create", { title: "Auth", parentId: "main" });
+    const merged = await call("thread_merge", {
+      parentSummary: "## Decisions\n- Auth uses JWT\n- No GraphQL: REST is enough",
+    });
+    expect(merged.text).toContain('Thread "auth" merged into "main", which is now the active thread.');
+
+    expect((await call("context_get")).text).toContain("- Auth uses JWT");
+    const { contents } = await client.readResource({ uri: "threadmind://thread/auth" });
+    expect((contents[0] as { text: string }).text).toContain("status: done");
+  });
+
+  it("fits the context to a token budget", async () => {
+    await call("project_create", { title: "Shop" });
+    await call("summary_update", { content: "x".repeat(2000) });
+    await call("thread_create", { title: "Auth" });
+    await call("summary_update", { content: "Auth summary." });
+
+    const { text } = await call("context_get", { maxTokens: 100 });
+    expect(text).toContain("Auth summary.");
+    expect(text).toContain("_Left out to fit the token budget: main");
+  });
+
+  it("links threads to git branches and flags outdated summaries", async () => {
+    git(root, "init", "-q", "-b", "main");
+    await commitFile(root, "README.md", "hello");
+    await call("project_create", { title: "Shop" });
+
+    git(root, "checkout", "-q", "-b", "feature/auth-ui");
+    const created = await call("thread_create", { title: "Auth UI" });
+    expect(created.text).toContain('Linked to git branch "feature/auth-ui"');
+    await call("summary_update", {
+      content: "## Decisions\n- Login form with React Hook Form",
+      paths: ["src/auth"],
+    });
+    await commitFile(root, "src/auth/form.tsx", "v2");
+
+    // A new session on the branch starts on its thread, and sees the change
+    const onBranch = await otherSession();
+    try {
+      const { text } = await call("context_get", {}, onBranch);
+      expect(text).toContain("## Thread: Auth UI (active)");
+      expect(text).toContain("_⚠ 1 commit changed src/auth since this summary was written");
+    } finally {
+      await onBranch.close();
+    }
+
+    git(root, "checkout", "-q", "main");
+    const onMain = await otherSession();
+    try {
+      expect((await call("thread_list", {}, onMain)).text).toContain("main ← active");
+    } finally {
+      await onMain.close();
+    }
   });
 });
 
