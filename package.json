@@ -1,6 +1,6 @@
 {
   "name": "thread-mind-mcp",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Git-friendly memory for AI coding sessions: a tree of thread summaries with inherited context",
   "mcpName": "io.github.mahmoud-nb/thread-mind",
   "type": "module",
