@@ -113,6 +113,32 @@ Or via CLI: `claude mcp add thread-mind-mcp --scope project -- cmd /c volta run 
 
 ThreadMind uses the **stdio transport**, compatible with any MCP client. Use the same configuration above for your platform.
 
+### Workspace location
+
+ThreadMind stores its data in `.threadmind/` at the root of your workspace, found in this order:
+
+1. The `THREADMIND_ROOT` environment variable, if set
+2. The workspace roots advertised by the MCP client (a root that already contains `.threadmind/` wins)
+3. The directory the server was started from
+
+A client that starts servers outside your project without advertising roots (for example a desktop chat app with no project folder) needs `THREADMIND_ROOT`:
+
+```json
+{
+  "mcpServers": {
+    "thread-mind": {
+      "command": "npx",
+      "args": ["-y", "thread-mind-mcp"],
+      "env": { "THREADMIND_ROOT": "/path/to/your/project" }
+    }
+  }
+}
+```
+
+### Teach your AI client to use ThreadMind
+
+The server sends its usage instructions when the client connects (MCP server instructions): Claude Code needs no setup file. For agents that don't read them, run `threadmind_init` to generate an `AGENTS.md` file, read by Codex, Cursor, GitHub Copilot and others.
+
 ---
 
 ## How It Works
@@ -197,6 +223,8 @@ ThreadMind context: ~450 tokens | depth: 3 threads
 
 ## Available Tools
 
+Each tool declares a title and MCP annotations (read-only, destructive, idempotent), which clients can use to decide when to ask for confirmation.
+
 ### Project Management
 
 | Tool | Description |
@@ -218,7 +246,7 @@ ThreadMind context: ~450 tokens | depth: 3 threads
 | Tool | Description |
 |------|-------------|
 | `thread_create` | Create a child thread branching from a parent |
-| `thread_switch` | Switch to a different thread |
+| `thread_switch` | Switch to a different thread and return its assembled context |
 | `thread_list` | Display the thread tree as ASCII art |
 | `thread_delete` | Delete a thread and all its descendants |
 | `thread_rebase` | Move a thread to a different parent (like `git rebase`) |
@@ -261,21 +289,24 @@ ThreadMind context: ~450 tokens | depth: 3 threads
 
 | Tool | Description |
 |------|-------------|
-| `threadmind_init` | Generate instruction files for AI clients (CLAUDE.md, .cursorrules, etc.) |
+| `threadmind_init` | Generate instruction files for agents that don't read MCP server instructions (AGENTS.md, etc.) |
 
 #### `threadmind_init`
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `clients` | string[] | No | Clients to generate for: `"claude"`, `"cursor"`, `"generic"` (default: all) |
+| `clients` | string[] | No | Files to generate: `"agents"`, `"claude"`, `"cursor"`, `"generic"` (default: `agents` and `generic`) |
 
-Generates instruction files that tell AI clients to automatically use ThreadMind:
+Writes the same instructions the server sends to MCP clients:
 
-| Client | File | Behavior |
-|--------|------|----------|
-| Claude Code | `CLAUDE.md` | Read automatically at every session start |
-| Cursor | `.cursorrules` | Read automatically by Cursor |
-| Generic | `.threadmind/instructions.md` | Copy-paste into any client's custom instructions |
+| Target | File | Read by |
+|--------|------|---------|
+| `agents` | `AGENTS.md` | Codex, Cursor, GitHub Copilot and other agents |
+| `claude` | `CLAUDE.md` | Claude Code — not needed, it receives the server instructions |
+| `cursor` | `.cursor/rules/threadmind.mdc` | Cursor, as an always-applied project rule |
+| `generic` | `.threadmind/instructions.md` | Paste into any client's custom instructions |
+
+Earlier versions wrote `CLAUDE.md` and `.cursorrules`. `threadmind_init` moves the ThreadMind section out of `.cursorrules` when it generates the Cursor rule, and reports any section left in either file.
 
 ### Statistics
 
@@ -293,6 +324,9 @@ Generates instruction files that tell AI clients to automatically use ThreadMind
 |----------|-----|-------------|
 | Current Context | `threadmind://context` | Assembled context for the active thread |
 | Thread Tree | `threadmind://tree` | ASCII visualization of the thread tree |
+| Thread Summary | `threadmind://thread/{threadId}` | Summary of one thread, without its ancestors |
+
+Every thread of the active project is listed as a resource: in Claude Code, type `@` to mention one and bring a sibling thread's summary into the conversation.
 
 ---
 
@@ -300,22 +334,25 @@ Generates instruction files that tell AI clients to automatically use ThreadMind
 
 | Prompt | Description |
 |--------|-------------|
-| `start-thread` | Load and inject the assembled context at the start of a session |
-| `summarize-thread` | Guide the AI to generate a structured summary for the current thread |
 | `tm-help` | Show all available ThreadMind commands |
-| `tm-context` | Get assembled context (shortcut for `context_get`) |
-| `tm-tree` | Display thread tree (shortcut for `thread_list`) |
-| `tm-create` | Create a new thread (shortcut for `thread_create`) |
-| `tm-switch` | Switch to a thread (shortcut for `thread_switch`) |
-| `tm-summary` | Update or generate summary (shortcut for `summary_update`) |
-| `tm-stats` | Show token savings (shortcut for `stats_show`) |
-| `tm-init` | Generate instruction files (shortcut for `threadmind_init`) |
+| `tm-context` | Load the active thread's context into the conversation |
+| `tm-tree` | Show the thread tree |
+| `tm-stats` | Show token savings statistics |
+| `tm-create` | Create a new thread (via `thread_create`) |
+| `tm-switch` | Switch to a thread (via `thread_switch`) |
+| `tm-rebase` | Move a thread to a different parent (via `thread_rebase`) |
+| `tm-summary` | Save the given summary, or have the AI write one (via `summary_update`) |
+| `tm-init` | Generate instruction files (via `threadmind_init`) |
+| `start-thread` | Same as `tm-context`, kept for compatibility |
+| `summarize-thread` | Same as `tm-summary` without content, kept for compatibility |
+
+`tm-context`, `tm-tree` and `tm-stats` embed their result directly, without a tool call. The other prompts ask the AI to call the matching tool, so your client's confirmation settings still apply to changes. Thread ID arguments support autocompletion.
 
 In Claude Code, these appear as slash commands: `/mcp__thread-mind__tm-help`, `/mcp__thread-mind__tm-create`, etc.
 
-### Quick Shortcuts (via CLAUDE.md)
+### Quick Shortcuts
 
-After running `threadmind_init`, the generated `CLAUDE.md` enables short text commands you can type directly in chat:
+The server instructions teach the AI short text commands you can type directly in chat:
 
 | Command | Action |
 |---------|--------|
@@ -328,6 +365,7 @@ After running `threadmind_init`, the generated `CLAUDE.md` enables short text co
 | `tm:summary <content>` | Save specific summary content |
 | `tm:stats` | Show token savings statistics |
 | `tm:delete <id>` | Delete a thread |
+| `tm:rebase <id> <newParentId>` | Move a thread to a different parent |
 | `tm:init` | Generate instruction files |
 | `tm:project <title>` | Create a new project |
 | `tm:projects` | List all projects |
@@ -343,11 +381,9 @@ You: Create a new ThreadMind project called "E-Commerce App" with system context
      "Building a Next.js e-commerce platform with Stripe payments"
 
 AI: [calls project_create] → Project "e-commerce-app" created. Main thread active.
-
-You: Initialize ThreadMind for this project
-
-AI: [calls threadmind_init] → Generated CLAUDE.md, .cursorrules, instructions.md
 ```
+
+Claude Code needs no further setup. To let other agents (Codex, Cursor, Copilot…) use the project too, ask for `threadmind_init`, which generates an `AGENTS.md` file.
 
 ### 2. Work and summarize
 
@@ -538,6 +574,7 @@ src/
     ids.ts              # ID validation, slugification, title normalization
     lock.ts             # Cross-process lock file
     storage.ts          # File I/O layer with atomic writes
+    workspace.ts        # Workspace root resolution (env, client roots, cwd)
     project.ts          # Project lifecycle management
     thread.ts           # Thread CRUD, tree operations, ASCII rendering
     context.ts          # Context assembly + token estimation
@@ -559,8 +596,9 @@ src/
 - **Atomic writes** — write to a temp file, flush it, then rename it over the target, so a crash never leaves a partial file
 - **Serialized updates** — read-modify-write operations run one at a time, across sessions too, through a lock file
 - **Slugified IDs** — thread IDs derived from titles (`"Auth System"` → `"auth-system"`), collision-safe with auto-suffix, restricted to `a-z`, `0-9` and `-` (which also rules out path traversal)
-- **MCP Prompts** — structured templates (`start-thread`, `summarize-thread`) to guide AI clients
-- **Multi-client instructions** — auto-generated CLAUDE.md / .cursorrules for seamless integration
+- **MCP Prompts** — slash commands; read-only ones embed their result instead of asking for a tool call
+- **Server instructions** — the server tells clients how to use it, so no instruction file is needed; `threadmind_init` writes the same text to AGENTS.md and other files for agents that don't read them
+- **Workspace resolution** — `THREADMIND_ROOT`, then the client's roots, then the working directory
 - **Token estimation** — approximate token count reported with every context assembly
 
 ---

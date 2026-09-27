@@ -2,6 +2,10 @@
 
 ThreadMind expose 12 outils MCP. Tous retournent des réponses textuelles structurées et utilisent `isError: true` en cas d'échec.
 
+Chaque outil déclare un titre et des annotations MCP : `readOnlyHint` pour `project_list`, `thread_list`, `context_get` et `stats_show` ; `destructiveHint` pour `thread_delete` et `summary_update` (qui remplace le résumé précédent). Les clients peuvent s'en servir pour décider quand demander une confirmation.
+
+Le serveur envoie aussi ses consignes d'utilisation au client à la connexion (instructions de serveur MCP) : un client comme Claude Code n'a besoin d'aucun fichier d'instructions.
+
 ## Outils de projet
 
 ### `project_create`
@@ -90,7 +94,7 @@ Bascule vers un autre thread.
 |-----|------|--------|-------------|
 | `threadId` | `string` | Oui | ID du thread cible |
 
-**Retourne :** Confirmation + aperçu du contexte (300 premiers caractères).
+**Retourne :** Confirmation + le contexte assemblé complet du nouveau thread : inutile d'appeler `context_get` ensuite.
 
 **Effets secondaires :**
 - Définit le thread comme thread actif
@@ -214,29 +218,34 @@ Voir [Assemblage du contexte](/fr/guide/context-assembly) pour les détails.
 
 ### `threadmind_init`
 
-Génère des fichiers d'instructions pour les clients IA afin d'activer l'utilisation semi-automatique de ThreadMind.
+Écrit les consignes d'utilisation du serveur dans les fichiers lus par les agents qui ne reçoivent pas les instructions de serveur MCP. Claude Code n'en a pas besoin.
 
 **Paramètres :**
 
 | Nom | Type | Requis | Description |
 |-----|------|--------|-------------|
-| `clients` | `string[]` | Non | Clients cibles : `"claude"`, `"cursor"`, `"generic"` (défaut : tous) |
+| `clients` | `string[]` | Non | Fichiers à générer : `"agents"`, `"claude"`, `"cursor"`, `"generic"` (défaut : `agents` et `generic`) |
 
-**Retourne :** Confirmation avec la liste des fichiers générés.
+**Retourne :** Confirmation avec la liste des fichiers générés, et des notes sur les sections laissées par les versions précédentes.
 
 **Fichiers générés :**
 
-| Client | Fichier | Comportement |
-|--------|---------|--------------|
-| Claude Code | `CLAUDE.md` | Lu automatiquement à chaque démarrage de session |
-| Cursor | `.cursorrules` | Lu automatiquement par Cursor |
-| Générique | `.threadmind/instructions.md` | À copier-coller dans les instructions personnalisées de n'importe quel client |
+| Cible | Fichier | Lu par |
+|-------|---------|--------|
+| `agents` | `AGENTS.md` | Codex, Cursor, GitHub Copilot et d'autres agents |
+| `claude` | `CLAUDE.md` | Claude Code — inutile, il reçoit les instructions du serveur |
+| `cursor` | `.cursor/rules/threadmind.mdc` | Cursor, comme règle de projet toujours appliquée |
+| `generic` | `.threadmind/instructions.md` | À coller dans les instructions personnalisées de n'importe quel client |
 
-Les instructions générées demandent à l'IA de :
-- Appeler `context_get` au début de chaque session
-- Appeler `summary_update` après chaque discussion significative
-- Utiliser `thread_create` quand le sujet change
-- Utiliser `thread_list` pour visualiser l'état actuel
+Dans les fichiers Markdown, la section ThreadMind est placée entre les marqueurs `<!-- threadmind:start -->` et `<!-- threadmind:end -->` : le reste du fichier est préservé. Le fichier de règle Cursor est entièrement généré.
+
+Les instructions demandent à l'IA de :
+- Appeler `context_get` une fois au début d'une session
+- Appeler `summary_update` après une décision ou une tâche terminée, en gardant ce qui reste vrai
+- Utiliser `thread_list`, puis `thread_switch` ou `thread_create`, quand le sujet change
+- Exécuter les raccourcis `tm:` tapés par l'utilisateur
+
+**Migration :** les versions précédentes écrivaient `CLAUDE.md` et `.cursorrules`. En générant la règle Cursor, `threadmind_init` retire la section ThreadMind de `.cursorrules` (et supprime le fichier s'il ne contient plus rien). Une section ThreadMind restée dans un fichier non ciblé est signalée, pas modifiée.
 
 ---
 
@@ -244,51 +253,43 @@ Les instructions générées demandent à l'IA de :
 
 ThreadMind fournit 11 Prompts MCP — des templates structurés que les clients peuvent invoquer comme slash commands.
 
-### Prompts principaux
+### Prompts en lecture seule
 
-#### `start-thread`
+Ces prompts intègrent directement leur résultat dans le message, sans appel d'outil.
 
-Charge et injecte le contexte assemblé au début d'une session.
+| Prompt | Contenu | Arguments |
+|--------|---------|-----------|
+| `tm-help` | Référence des commandes, projet et thread actifs | Aucun |
+| `tm-context` | Contexte assemblé du thread actif | Aucun |
+| `tm-tree` | Arbre des threads du projet actif | Aucun |
+| `tm-stats` | Statistiques d'économie de tokens | Aucun |
 
-**Arguments :** Aucun
+### Prompts qui modifient l'état
 
-**Retourne :** Un message utilisateur contenant le contexte assemblé complet avec estimation des tokens.
+Ces prompts demandent à l'IA d'appeler l'outil correspondant : les réglages de confirmation du client continuent de s'appliquer.
 
-**Cas d'usage :** Invoquez au début d'une nouvelle conversation pour initialiser l'IA avec le contexte de votre arbre de threads.
-
-#### `summarize-thread`
-
-Guide l'IA pour générer un résumé structuré du thread courant.
-
-**Arguments :**
-
-| Nom | Type | Requis | Description |
-|-----|------|--------|-------------|
-| `topic` | `string` | Non | Brève description de ce qui a été discuté |
-
-**Retourne :** Des instructions pour que l'IA résume la discussion et la sauvegarde via `summary_update`.
-
-### Prompts raccourcis
-
-Ces prompts servent de raccourcis — chacun déclenche immédiatement l'outil correspondant.
-
-| Prompt | Raccourci pour | Arguments |
-|--------|---------------|-----------|
-| `tm-help` | — | Aucun |
-| `tm-context` | `context_get` | Aucun |
-| `tm-tree` | `thread_list` | Aucun |
+| Prompt | Outil | Arguments |
+|--------|-------|-----------|
 | `tm-create` | `thread_create` | `title` (requis) |
-| `tm-switch` | `thread_switch` | `threadId` (requis) |
-| `tm-rebase` | `thread_rebase` | `threadId` (requis), `newParentId` (requis) |
-| `tm-summary` | `summary_update` | `content` (optionnel — auto-génère si omis) |
-| `tm-stats` | `stats_show` | Aucun |
+| `tm-switch` | `thread_switch` | `threadId` (requis, avec autocomplétion) |
+| `tm-rebase` | `thread_rebase` | `threadId`, `newParentId` (requis, avec autocomplétion) |
+| `tm-summary` | `summary_update` | `content` (optionnel — l'IA rédige le résumé s'il est omis), `topic` (indication optionnelle) |
 | `tm-init` | `threadmind_init` | Aucun |
+
+Sans `content`, `tm-summary` fournit à l'IA le résumé actuel et un modèle (décisions et raisons, choix techniques, état actuel, questions ouvertes).
+
+### Alias de compatibilité
+
+| Prompt | Équivalent |
+|--------|------------|
+| `start-thread` | `tm-context` |
+| `summarize-thread` | `tm-summary` sans `content` (accepte un `topic` optionnel) |
 
 Dans Claude Code, ils apparaissent comme `/mcp__thread-mind__tm-help`, `/mcp__thread-mind__tm-create`, etc.
 
 ### Raccourcis texte (commandes `tm:`)
 
-Après avoir exécuté `threadmind_init`, le fichier `CLAUDE.md` généré apprend à l'IA à reconnaître des commandes courtes tapées directement dans le chat :
+Les instructions du serveur (et les fichiers générés par `threadmind_init`) apprennent à l'IA à reconnaître des commandes courtes tapées directement dans le chat :
 
 ```
 tm:help                → Afficher toutes les commandes
@@ -306,7 +307,7 @@ tm:project Mon App     → project_create(title: "Mon App")
 tm:projects            → project_list
 ```
 
-Ces raccourcis fonctionnent dans tout client IA qui lit `CLAUDE.md` ou `.cursorrules`.
+Ces raccourcis fonctionnent dans tout client IA qui lit les instructions de serveur MCP ou l'un des fichiers générés.
 
 ---
 

@@ -187,6 +187,28 @@ Si vous utilisez **Volta**, son shim `npx` peut ne pas être résolvable quand v
 Via CLI : `claude mcp add thread-mind -- cmd /c volta run npx -y thread-mind-mcp`
 :::
 
+### Emplacement du workspace
+
+ThreadMind stocke ses données dans `.threadmind/` à la racine de votre workspace, déterminée dans cet ordre :
+
+1. La variable d'environnement `THREADMIND_ROOT`, si elle est définie
+2. Les racines (roots) de workspace annoncées par votre client MCP (celle qui contient déjà `.threadmind/` est prioritaire)
+3. Le dossier depuis lequel le serveur a été lancé — votre projet, avec Claude Code
+
+Un client qui lance les serveurs hors de votre projet sans annoncer de racines a besoin de `THREADMIND_ROOT` :
+
+```json
+{
+  "mcpServers": {
+    "thread-mind": {
+      "command": "npx",
+      "args": ["-y", "thread-mind-mcp"],
+      "env": { "THREADMIND_ROOT": "/chemin/vers/votre/projet" }
+    }
+  }
+}
+```
+
 ## Votre premier projet
 
 Une fois ThreadMind configuré, lancez une conversation avec votre IA et utilisez les outils :
@@ -201,19 +223,21 @@ IA :   [appelle project_create]
        ✓ Projet "mon-app-web" créé (mode : solo). Thread principal actif.
 ```
 
-### 2. Générer les fichiers d'instructions
+### 2. Configurer d'autres agents (optionnel)
+
+Le serveur envoie ses consignes d'utilisation à votre client IA dès la connexion, raccourcis `tm:` compris : Claude Code charge le contexte au début de chaque session sans aucun fichier de configuration.
+
+Pour les agents qui ne lisent pas les instructions de serveur MCP, générez un fichier `AGENTS.md` (lu par Codex, Cursor, GitHub Copilot et d'autres) :
 
 ```
 Vous : tm:init
 
 IA :   [appelle threadmind_init]
-       ✓ Fichiers générés : CLAUDE.md, .cursorrules, instructions.md
+       ✓ Fichiers générés : AGENTS.md, .threadmind/instructions.md
 ```
 
-Cela génère des fichiers d'instructions qui apprennent à votre client IA à utiliser ThreadMind automatiquement — y compris les raccourcis `tm:` que vous pouvez taper directement dans le chat.
-
 ::: tip
-Exécutez toujours `tm:init` (ou `threadmind_init`) juste après avoir créé un projet. Le fichier `CLAUDE.md` généré indique à Claude Code d'utiliser proactivement ThreadMind à chaque début de session.
+Si une version précédente a généré une section ThreadMind dans `CLAUDE.md`, supprimez-la : Claude Code reçoit désormais les mêmes consignes du serveur, et les chargerait sinon deux fois. `threadmind_init` signale ce type de reste.
 :::
 
 ### 3. Travailler et résumer
@@ -296,7 +320,7 @@ IA :   [appelle stats_show]
 
 ## Référence rapide des raccourcis
 
-Après avoir exécuté `threadmind_init`, vous pouvez taper ces raccourcis directement dans le chat :
+Vous pouvez taper ces raccourcis directement dans le chat (les instructions du serveur les apprennent à l'IA) :
 
 | Commande | Action |
 |----------|--------|

@@ -1,6 +1,6 @@
 # Resources Reference
 
-ThreadMind exposes 2 MCP resources. Resources provide read-only data that MCP clients can display or inject.
+ThreadMind exposes 2 MCP resources and 1 resource template. Resources provide read-only data that MCP clients can display or inject.
 
 ## `threadmind://context`
 
@@ -43,8 +43,7 @@ No active project or thread. Use project_create first.
 
 MCP clients that support resources can:
 - Display the resource content in a panel
-- Auto-inject it into the conversation context
-- Subscribe to updates (ThreadMind sends `notifications/resources/updated` after mutations)
+- Inject it into the conversation context
 
 ---
 
@@ -77,8 +76,30 @@ No active project. Use project_create first.
 
 ---
 
+## `threadmind://thread/{threadId}`
+
+**Name:** `thread` (resource template)
+
+**MIME type:** `text/markdown`
+
+**Description:** The summary of one thread of the active project, without its ancestors.
+
+Every thread of the active project is listed as a resource (named by its ID, titled by its thread title), and the `threadId` variable supports autocompletion. In Claude Code, type `@` to mention one and bring a sibling thread's summary into the conversation without switching threads.
+
+### Response Format
+
+```markdown
+# Auth API Endpoints
+
+_Thread `auth-api` · parent: auth · author: sarah-7b2c · updated: 2026-04-15T12:30:00Z_
+
+POST /auth/login, POST /auth/register, POST /auth/refresh...
+```
+
+Reading a thread that is not in the active project's tree returns an error.
+
+---
+
 ## Resource Updates
 
-Both resources reflect the **current state** at the time of reading. After any mutation tool (`project_create`, `thread_create`, `thread_switch`, `summary_update`, `thread_delete`), the resource contents will change.
-
-MCP clients that subscribe to resource notifications will be notified of updates automatically.
+Resources reflect the **current state** at the time of reading. ThreadMind sends `notifications/resources/list_changed` when the list of thread resources changes (`project_create`, `project_switch`, `thread_create`, `thread_delete`). It does not support subscriptions: clients read a resource again to get its current content.

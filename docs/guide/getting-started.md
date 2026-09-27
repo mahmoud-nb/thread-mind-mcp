@@ -187,6 +187,28 @@ If you use **Volta**, its `npx` shim may not resolve when your AI client spawns 
 Via CLI: `claude mcp add thread-mind -- cmd /c volta run npx -y thread-mind-mcp`
 :::
 
+### Workspace location
+
+ThreadMind stores its data in `.threadmind/` at the root of your workspace, found in this order:
+
+1. The `THREADMIND_ROOT` environment variable, if set
+2. The workspace roots advertised by your MCP client (a root that already contains `.threadmind/` wins)
+3. The directory the server was started from — your project, with Claude Code
+
+A client that starts servers outside your project without advertising roots needs `THREADMIND_ROOT`:
+
+```json
+{
+  "mcpServers": {
+    "thread-mind": {
+      "command": "npx",
+      "args": ["-y", "thread-mind-mcp"],
+      "env": { "THREADMIND_ROOT": "/path/to/your/project" }
+    }
+  }
+}
+```
+
 ## Your First Project
 
 Once ThreadMind is configured, start a conversation with your AI and use the tools:
@@ -201,19 +223,21 @@ AI:  [calls project_create]
      ✓ Project "my-web-app" created (mode: solo). Main thread active.
 ```
 
-### 2. Generate instruction files
+### 2. Set up other agents (optional)
+
+The server sends its usage instructions to your AI client when it connects, including the `tm:` shortcuts: Claude Code loads the context at the start of each session with no setup file.
+
+For agents that don't read MCP server instructions, generate an `AGENTS.md` file (read by Codex, Cursor, GitHub Copilot and others):
 
 ```
 You: tm:init
 
 AI:  [calls threadmind_init]
-     ✓ Generated CLAUDE.md, .cursorrules, instructions.md
+     ✓ Generated AGENTS.md, .threadmind/instructions.md
 ```
 
-This generates instruction files that teach your AI client to use ThreadMind automatically — including `tm:` shortcuts you can type in chat.
-
 ::: tip
-Always run `tm:init` (or `threadmind_init`) right after creating a project. The generated `CLAUDE.md` file tells Claude Code to proactively use ThreadMind at every session start.
+If an earlier version generated a ThreadMind section in `CLAUDE.md`, delete it: Claude Code now receives the same instructions from the server, and would otherwise load them twice. `threadmind_init` reports such leftovers.
 :::
 
 ### 3. Work on a topic and summarize
@@ -296,7 +320,7 @@ AI:  [calls stats_show]
 
 ## Quick Shortcuts Reference
 
-After running `threadmind_init`, you can type these shortcuts directly in chat:
+You can type these shortcuts directly in chat (the server instructions teach them to the AI):
 
 | Command | Action |
 |---------|--------|

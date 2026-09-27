@@ -35,7 +35,7 @@ The `systemContext` is a global instruction that appears at the top of every ass
 - Coding conventions ("Use functional components, no classes")
 
 ::: tip
-After creating a project, run `tm:init` (or `threadmind_init`) to generate instruction files that teach your AI client to use ThreadMind automatically.
+Claude Code and other clients that read MCP server instructions use ThreadMind automatically. For other agents, run `tm:init` (or `threadmind_init`) to generate an `AGENTS.md` file.
 :::
 
 ## Listing Projects

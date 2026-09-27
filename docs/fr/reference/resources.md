@@ -1,6 +1,6 @@
 # Référence des ressources
 
-ThreadMind expose 2 ressources MCP. Les ressources fournissent des données en lecture seule que les clients MCP peuvent afficher ou injecter.
+ThreadMind expose 2 ressources MCP et 1 modèle de ressource (template). Les ressources fournissent des données en lecture seule que les clients MCP peuvent afficher ou injecter.
 
 ## `threadmind://context`
 
@@ -43,8 +43,7 @@ No active project or thread. Use project_create first.
 
 Les clients MCP qui supportent les ressources peuvent :
 - Afficher le contenu dans un panneau
-- L'injecter automatiquement dans le contexte de conversation
-- S'abonner aux mises à jour (ThreadMind envoie `notifications/resources/updated` après chaque mutation)
+- L'injecter dans le contexte de conversation
 
 ---
 
@@ -77,8 +76,30 @@ No active project. Use project_create first.
 
 ---
 
+## `threadmind://thread/{threadId}`
+
+**Nom :** `thread` (modèle de ressource)
+
+**Type MIME :** `text/markdown`
+
+**Description :** Le résumé d'un thread du projet actif, sans ses ancêtres.
+
+Chaque thread du projet actif est listé comme ressource (nommée par son ID, titrée par le titre du thread), et la variable `threadId` propose l'autocomplétion. Dans Claude Code, tapez `@` pour en mentionner un et ajouter le résumé d'un thread voisin à la conversation sans changer de thread.
+
+### Format de réponse
+
+```markdown
+# Endpoints de l'API d'authentification
+
+_Thread `auth-api` · parent: auth · author: sarah-7b2c · updated: 2026-04-15T12:30:00Z_
+
+POST /auth/login, POST /auth/register, POST /auth/refresh...
+```
+
+Lire un thread absent de l'arbre du projet actif renvoie une erreur.
+
+---
+
 ## Mises à jour des ressources
 
-Les deux ressources reflètent l'**état actuel** au moment de la lecture. Après tout outil de mutation (`project_create`, `thread_create`, `thread_switch`, `summary_update`, `thread_delete`), le contenu des ressources change.
-
-Les clients MCP qui s'abonnent aux notifications de ressources seront informés automatiquement des mises à jour.
+Les ressources reflètent l'**état actuel** au moment de la lecture. ThreadMind envoie `notifications/resources/list_changed` quand la liste des ressources de threads change (`project_create`, `project_switch`, `thread_create`, `thread_delete`). Il ne gère pas les abonnements : les clients relisent une ressource pour obtenir son contenu actuel.
