@@ -1,3 +1,26 @@
+# [0.5.0](https://github.com/mahmoud-nb/thread-mind-mcp/compare/v0.4.2...v0.5.0) (2026-09-27)
+
+
+### Bug Fixes
+
+* harden storage against path traversal, frontmatter injection and concurrent writes ([165f6a4](https://github.com/mahmoud-nb/thread-mind-mcp/commit/165f6a410dc7bc33ab597e8c017ad34e5ff7f90a))
+
+
+### Features
+
+* add the Claude Code plugin and MCP Registry metadata ([01c64ed](https://github.com/mahmoud-nb/thread-mind-mcp/commit/01c64edbdd9aea1e3e398e1bb10f46edadb6173f))
+* modernize the MCP integration ([6497c45](https://github.com/mahmoud-nb/thread-mind-mcp/commit/6497c459f64a673d14e49c306f6c4156343c70a9))
+* sessions, git branches, structured summaries and measured stats ([ecbc918](https://github.com/mahmoud-nb/thread-mind-mcp/commit/ecbc918248c94d03a053425a33530757bbb1b9ff))
+
+
+### BREAKING CHANGES
+
+* .threadmind/trees/ is no longer used: ThreadMind moves the tree into the thread files on first use and deletes trees/<project>.json, which older versions need, so a team must upgrade together. Statistics are no longer written to .threadmind/stats/, and context_get and stats_show no longer report an estimated reduction: stats_show reports measured conversation sizes instead.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+* threadmind_init now generates AGENTS.md and .threadmind/instructions.md by default instead of CLAUDE.md, .cursorrules and .threadmind/instructions.md; the cursor target writes .cursor/rules/threadmind.mdc.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ## [0.4.2](https://github.com/mahmoud-nb/thread-mind-mcp/compare/v0.4.1...v0.4.2) (2026-05-20)
 
 
