@@ -1,7 +1,7 @@
 {
   "name": "thread-mind",
   "displayName": "ThreadMind",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Git-friendly memory for AI coding sessions: a tree of thread summaries, loaded automatically when a session starts",
   "author": {
     "name": "Mahmoud NBET",
