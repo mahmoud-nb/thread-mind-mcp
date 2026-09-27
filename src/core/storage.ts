@@ -32,21 +32,36 @@ const DEFAULT_STATE: AppState = {
 };
 
 export class StorageServiceImpl implements StorageService {
-  private basePath: string;
+  private readonly dataDir: () => Promise<string>;
   private lockQueue: Promise<unknown> = Promise.resolve();
 
-  constructor(basePath?: string) {
-    this.basePath = basePath ?? join(process.cwd(), ".threadmind");
+  /**
+   * @param basePath the .threadmind directory, or a function resolving it
+   * lazily (defaults to .threadmind in the working directory)
+   */
+  constructor(basePath?: string | (() => Promise<string>)) {
+    if (typeof basePath === "function") {
+      this.dataDir = basePath;
+    } else {
+      const fixed = basePath ?? join(process.cwd(), ".threadmind");
+      this.dataDir = async () => fixed;
+    }
+  }
+
+  /** The directory that contains .threadmind (where instruction files go). */
+  async workspaceRoot(): Promise<string> {
+    return dirname(await this.dataDir());
   }
 
   async ensureInitialized(): Promise<void> {
-    await mkdir(join(this.basePath, "projects"), { recursive: true });
-    await mkdir(join(this.basePath, "threads"), { recursive: true });
-    await mkdir(join(this.basePath, "trees"), { recursive: true });
-    await mkdir(join(this.basePath, "stats"), { recursive: true });
+    const base = await this.dataDir();
+    await mkdir(join(base, "projects"), { recursive: true });
+    await mkdir(join(base, "threads"), { recursive: true });
+    await mkdir(join(base, "trees"), { recursive: true });
+    await mkdir(join(base, "stats"), { recursive: true });
 
     // Create .gitignore to exclude config.json (per-user state)
-    const gitignorePath = join(this.basePath, ".gitignore");
+    const gitignorePath = join(base, ".gitignore");
     try {
       await readFile(gitignorePath, "utf-8");
     } catch {
@@ -79,8 +94,9 @@ export class StorageServiceImpl implements StorageService {
    */
   async withLock<T>(fn: () => Promise<T>): Promise<T> {
     const run = this.lockQueue.then(async () => {
-      await mkdir(this.basePath, { recursive: true });
-      const release = await acquireFileLock(join(this.basePath, ".lock"));
+      const base = await this.dataDir();
+      await mkdir(base, { recursive: true });
+      const release = await acquireFileLock(join(base, ".lock"));
       try {
         return await fn();
       } finally {
@@ -94,11 +110,9 @@ export class StorageServiceImpl implements StorageService {
   // --- Config (AppState) ---
 
   async readConfig(): Promise<AppState> {
+    const filePath = await this.resolve("config.json");
     try {
-      const raw = await readFile(
-        join(this.basePath, "config.json"),
-        "utf-8"
-      );
+      const raw = await readFile(filePath, "utf-8");
       return { ...DEFAULT_STATE, ...JSON.parse(raw) };
     } catch {
       return { ...DEFAULT_STATE };
@@ -107,7 +121,7 @@ export class StorageServiceImpl implements StorageService {
 
   async writeConfig(state: AppState): Promise<void> {
     await this.atomicWrite(
-      join(this.basePath, "config.json"),
+      await this.resolve("config.json"),
       JSON.stringify(state, null, 2)
     );
   }
@@ -115,27 +129,25 @@ export class StorageServiceImpl implements StorageService {
   // --- ProjectConfig ---
 
   async readProjectConfig(projectId: string): Promise<ProjectConfig> {
-    const raw = await readFile(this.projectFile(projectId), "utf-8");
+    const raw = await readFile(await this.projectFile(projectId), "utf-8");
     return JSON.parse(raw) as ProjectConfig;
   }
 
   async writeProjectConfig(config: ProjectConfig): Promise<void> {
     await this.atomicWrite(
-      this.projectFile(config.id),
+      await this.projectFile(config.id),
       JSON.stringify(config, null, 2)
     );
   }
 
   async listProjects(): Promise<ProjectConfig[]> {
+    const dir = await this.resolve("projects");
     try {
-      const files = await readdir(join(this.basePath, "projects"));
+      const files = await readdir(dir);
       const configs: ProjectConfig[] = [];
       for (const file of files) {
         if (!file.endsWith(".json")) continue;
-        const raw = await readFile(
-          join(this.basePath, "projects", file),
-          "utf-8"
-        );
+        const raw = await readFile(join(dir, file), "utf-8");
         configs.push(JSON.parse(raw) as ProjectConfig);
       }
       return configs;
@@ -147,7 +159,10 @@ export class StorageServiceImpl implements StorageService {
   // --- Threads ---
 
   async readThread(projectId: string, threadId: string): Promise<ThreadNode> {
-    const raw = await readFile(this.threadFile(projectId, threadId), "utf-8");
+    const raw = await readFile(
+      await this.threadFile(projectId, threadId),
+      "utf-8"
+    );
     const node = parseFrontmatter(raw);
     // The file name is the identity: never trust an id stored inside the file
     node.metadata.id = threadId;
@@ -155,7 +170,7 @@ export class StorageServiceImpl implements StorageService {
   }
 
   async writeThread(projectId: string, node: ThreadNode): Promise<void> {
-    const filePath = this.threadFile(projectId, node.metadata.id);
+    const filePath = await this.threadFile(projectId, node.metadata.id);
     await mkdir(dirname(filePath), { recursive: true });
     await this.atomicWrite(
       filePath,
@@ -164,7 +179,7 @@ export class StorageServiceImpl implements StorageService {
   }
 
   async deleteThread(projectId: string, threadId: string): Promise<void> {
-    const filePath = this.threadFile(projectId, threadId);
+    const filePath = await this.threadFile(projectId, threadId);
     try {
       await unlink(filePath);
     } catch {
@@ -173,7 +188,7 @@ export class StorageServiceImpl implements StorageService {
   }
 
   async threadExists(projectId: string, threadId: string): Promise<boolean> {
-    const filePath = this.threadFile(projectId, threadId);
+    const filePath = await this.threadFile(projectId, threadId);
     try {
       await access(filePath);
       return true;
@@ -185,7 +200,7 @@ export class StorageServiceImpl implements StorageService {
   // --- Trees ---
 
   async readTree(projectId: string): Promise<TreeStructure> {
-    const filePath = this.treeFile(projectId);
+    const filePath = await this.treeFile(projectId);
     try {
       const raw = await readFile(filePath, "utf-8");
       return JSON.parse(raw) as TreeStructure;
@@ -196,7 +211,7 @@ export class StorageServiceImpl implements StorageService {
 
   async writeTree(projectId: string, tree: TreeStructure): Promise<void> {
     await this.atomicWrite(
-      this.treeFile(projectId),
+      await this.treeFile(projectId),
       JSON.stringify(tree, null, 2)
     );
   }
@@ -204,7 +219,7 @@ export class StorageServiceImpl implements StorageService {
   // --- Stats ---
 
   async readProjectStats(projectId: string): Promise<ProjectStats> {
-    const filePath = this.statsFile(projectId);
+    const filePath = await this.statsFile(projectId);
     try {
       const raw = await readFile(filePath, "utf-8");
       return JSON.parse(raw) as ProjectStats;
@@ -218,7 +233,7 @@ export class StorageServiceImpl implements StorageService {
     stats: ProjectStats
   ): Promise<void> {
     await this.atomicWrite(
-      this.statsFile(projectId),
+      await this.statsFile(projectId),
       JSON.stringify(stats, null, 2)
     );
   }
@@ -228,7 +243,7 @@ export class StorageServiceImpl implements StorageService {
   async deleteProjectDir(projectId: string): Promise<void> {
     assertValidId(projectId, "project");
     try {
-      await rm(join(this.basePath, "threads", projectId), {
+      await rm(await this.resolve("threads", projectId), {
         recursive: true,
         force: true,
       });
@@ -236,7 +251,7 @@ export class StorageServiceImpl implements StorageService {
       // Directory may not exist
     }
     try {
-      await unlink(this.statsFile(projectId));
+      await unlink(await this.statsFile(projectId));
     } catch {
       // Stats file may not exist
     }
@@ -244,25 +259,32 @@ export class StorageServiceImpl implements StorageService {
 
   // --- Paths (every ID is validated before it becomes part of a path) ---
 
-  private projectFile(projectId: string): string {
-    assertValidId(projectId, "project");
-    return join(this.basePath, "projects", `${projectId}.json`);
+  private async resolve(...segments: string[]): Promise<string> {
+    return join(await this.dataDir(), ...segments);
   }
 
-  private threadFile(projectId: string, threadId: string): string {
+  private async projectFile(projectId: string): Promise<string> {
+    assertValidId(projectId, "project");
+    return this.resolve("projects", `${projectId}.json`);
+  }
+
+  private async threadFile(
+    projectId: string,
+    threadId: string
+  ): Promise<string> {
     assertValidId(projectId, "project");
     assertValidId(threadId, "thread");
-    return join(this.basePath, "threads", projectId, `${threadId}.md`);
+    return this.resolve("threads", projectId, `${threadId}.md`);
   }
 
-  private treeFile(projectId: string): string {
+  private async treeFile(projectId: string): Promise<string> {
     assertValidId(projectId, "project");
-    return join(this.basePath, "trees", `${projectId}.json`);
+    return this.resolve("trees", `${projectId}.json`);
   }
 
-  private statsFile(projectId: string): string {
+  private async statsFile(projectId: string): Promise<string> {
     assertValidId(projectId, "project");
-    return join(this.basePath, "stats", `${projectId}.json`);
+    return this.resolve("stats", `${projectId}.json`);
   }
 
   // --- Helpers ---

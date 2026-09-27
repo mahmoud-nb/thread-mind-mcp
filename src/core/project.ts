@@ -74,7 +74,6 @@ export class ProjectServiceImpl implements ProjectService {
   }
 
   async list(): Promise<ProjectConfig[]> {
-    await this.storage.ensureInitialized();
     return this.storage.listProjects();
   }
 

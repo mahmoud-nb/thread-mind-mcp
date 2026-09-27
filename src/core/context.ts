@@ -2,6 +2,7 @@ import type {
   StorageService,
   ContextService,
   ContextResult,
+  ProjectStats,
 } from "../types/index.js";
 
 const MAX_DEPTH = 50;
@@ -12,7 +13,44 @@ const MAX_DEPTH = 50;
  * This is intentionally conservative (slightly over-estimates).
  */
 export function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 3.5);
+  return estimateTokensFromLength(text.length);
+}
+
+export function estimateTokensFromLength(length: number): number {
+  return Math.ceil(length / 3.5);
+}
+
+/**
+ * Render an assembled context identically for tools, prompts and resources.
+ * Project stats, when given, add the estimated raw history to the footer.
+ */
+export function formatContext(
+  result: ContextResult,
+  stats?: ProjectStats
+): string {
+  let footer = `_ThreadMind context: ~${result.tokens} tokens | depth: ${result.threadDepth} threads_`;
+
+  if (stats) {
+    const threads = Object.values(stats.threads);
+    const totalCumulativeChars = threads.reduce(
+      (sum, s) => sum + s.cumulativeInputLength,
+      0
+    );
+    const totalUpdates = threads.reduce((sum, s) => sum + s.updateCount, 0);
+
+    if (totalCumulativeChars > 0) {
+      const estimatedRawTokens = estimateTokensFromLength(totalCumulativeChars);
+      const reduction = Math.round(
+        (1 - result.tokens / estimatedRawTokens) * 100
+      );
+      footer += `\n_Estimated raw history: ~${estimatedRawTokens.toLocaleString()} tokens (~${reduction}% reduction from ${totalUpdates} summary updates)_`;
+    }
+  }
+
+  const body =
+    result.text ||
+    "(No summaries yet. Use summary_update to record decisions for this thread.)";
+  return `${body}\n\n---\n${footer}`;
 }
 
 export class ContextServiceImpl implements ContextService {

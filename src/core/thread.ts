@@ -349,6 +349,21 @@ export class ThreadServiceImpl implements ThreadService {
   }
 }
 
+/** IDs of the active project's threads that start with a typed prefix. */
+export async function completeThreadIds(
+  storage: StorageService,
+  prefix: string
+): Promise<string[]> {
+  try {
+    const state = await storage.readConfig();
+    if (!state.activeProjectId) return [];
+    const tree = await storage.readTree(state.activeProjectId);
+    return Object.keys(tree.nodes).filter((id) => id.startsWith(prefix));
+  } catch {
+    return [];
+  }
+}
+
 function assertThreadExists(tree: TreeStructure, threadId: string): void {
   if (!tree.nodes[threadId]) {
     throw new Error(`Thread "${threadId}" not found`);

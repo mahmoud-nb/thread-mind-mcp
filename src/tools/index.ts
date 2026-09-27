@@ -1,43 +1,73 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { Services } from "../types/index.js";
+import type { AppState, Services } from "../types/index.js";
 import {
+  CLIENT_TARGETS,
   generateInstructions,
-  type ClientTarget,
 } from "../core/instructions.js";
 import { ID_PATTERN, ID_PATTERN_MESSAGE } from "../core/ids.js";
+import { formatContext } from "../core/context.js";
+import { formatStatsReport } from "../core/stats.js";
 
 const id = () => z.string().regex(ID_PATTERN, ID_PATTERN_MESSAGE);
+
+// All tools work on local files only
+const READ_ONLY = { readOnlyHint: true, openWorldHint: false } as const;
+const WRITE = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  openWorldHint: false,
+} as const;
 
 export function registerTools(server: McpServer, services: Services): void {
   const { storage, project, thread, context, stats } = services;
 
+  /** The local state, or an error that tells the model how to recover. */
+  async function requireActiveProject(): Promise<
+    AppState & { activeProjectId: string }
+  > {
+    const state = await storage.readConfig();
+    if (state.activeProjectId) {
+      return { ...state, activeProjectId: state.activeProjectId };
+    }
+
+    const projects = await storage.listProjects();
+    if (projects.length > 0) {
+      throw new Error(
+        `No active project. Existing projects: ${projects.map((p) => p.id).join(", ")}. Use project_switch to select one.`
+      );
+    }
+    throw new Error(
+      "No ThreadMind project in this workspace. Only create one (project_create) if the user asks for it."
+    );
+  }
+
   // --- project_create ---
-  server.tool(
+  server.registerTool(
     "project_create",
-    "Create a new ThreadMind project with a main thread",
     {
-      title: z.string().describe("Project title"),
-      systemContext: z
-        .string()
-        .optional()
-        .describe("System context or instructions for this project"),
-      mode: z
-        .enum(["solo", "team"])
-        .optional()
-        .describe("Project mode: solo (default) or team"),
+      title: "Create project",
+      description: "Create a new ThreadMind project with a main thread",
+      inputSchema: {
+        title: z.string().describe("Project title"),
+        systemContext: z
+          .string()
+          .optional()
+          .describe("System context or instructions for this project"),
+        mode: z
+          .enum(["solo", "team"])
+          .optional()
+          .describe("Project mode: solo (default) or team"),
+      },
+      annotations: { ...WRITE, idempotentHint: false },
     },
     async ({ title, systemContext, mode }) => {
       try {
         const config = await project.create({ title, systemContext, mode });
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Project "${config.title}" created (id: ${config.id}, mode: ${config.mode}).\nMain thread created and set as active.\n\nTip: Run \`threadmind_init\` to generate instruction files (CLAUDE.md, .cursorrules) for automatic context integration.`,
-            },
-          ],
-        };
+        server.sendResourceListChanged();
+        return textResult(
+          `Project "${config.title}" created (id: ${config.id}, mode: ${config.mode}).\nMain thread created and set as active.\n\nClaude Code and other clients that read MCP server instructions need no further setup. For other agents, run \`threadmind_init\` to generate an AGENTS.md file.`
+        );
       } catch (error) {
         return errorResult(error);
       }
@@ -45,35 +75,29 @@ export function registerTools(server: McpServer, services: Services): void {
   );
 
   // --- project_list ---
-  server.tool(
+  server.registerTool(
     "project_list",
-    "List all ThreadMind projects",
-    {},
+    {
+      title: "List projects",
+      description: "List all ThreadMind projects",
+      annotations: READ_ONLY,
+    },
     async () => {
       try {
-        await storage.ensureInitialized();
         const projects = await project.list();
         const state = await storage.readConfig();
 
         if (projects.length === 0) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: "No projects found. Use project_create to create one.",
-              },
-            ],
-          };
+          return textResult(
+            "No projects found. Use project_create to create one."
+          );
         }
 
         const lines = projects.map((p) => {
           const active = p.id === state.activeProjectId ? " ← active" : "";
           return `- ${p.title} (${p.id}) [${p.mode}]${active}`;
         });
-
-        return {
-          content: [{ type: "text" as const, text: lines.join("\n") }],
-        };
+        return textResult(lines.join("\n"));
       } catch (error) {
         return errorResult(error);
       }
@@ -81,23 +105,23 @@ export function registerTools(server: McpServer, services: Services): void {
   );
 
   // --- project_switch ---
-  server.tool(
+  server.registerTool(
     "project_switch",
-    "Switch to a different project",
     {
-      projectId: id().describe("Project ID to switch to"),
+      title: "Switch project",
+      description: "Switch to a different project",
+      inputSchema: {
+        projectId: id().describe("Project ID to switch to"),
+      },
+      annotations: { ...WRITE, idempotentHint: true },
     },
     async ({ projectId }) => {
       try {
         await project.switch(projectId);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Switched to project "${projectId}". Active thread reset to "main".`,
-            },
-          ],
-        };
+        server.sendResourceListChanged();
+        return textResult(
+          `Switched to project "${projectId}". Active thread reset to "main".`
+        );
       } catch (error) {
         return errorResult(error);
       }
@@ -105,24 +129,24 @@ export function registerTools(server: McpServer, services: Services): void {
   );
 
   // --- thread_create ---
-  server.tool(
+  server.registerTool(
     "thread_create",
-    "Create a new child thread branching from a parent thread",
     {
-      title: z.string().describe("Thread title"),
-      parentId: id()
-        .optional()
-        .describe("Parent thread ID (defaults to current active thread)"),
+      title: "Create thread",
+      description:
+        "Create a new child thread branching from a parent thread, and make it the active thread",
+      inputSchema: {
+        title: z.string().describe("Thread title"),
+        parentId: id()
+          .optional()
+          .describe("Parent thread ID (defaults to current active thread)"),
+      },
+      annotations: { ...WRITE, idempotentHint: false },
     },
     async ({ title, parentId }) => {
       try {
-        const state = await storage.readConfig();
-        if (!state.activeProjectId) {
-          throw new Error("No active project. Use project_create first.");
-        }
-
-        const resolvedParent =
-          parentId ?? state.activeThreadId ?? "main";
+        const state = await requireActiveProject();
+        const resolvedParent = parentId ?? state.activeThreadId ?? "main";
 
         const node = await thread.create({
           projectId: state.activeProjectId,
@@ -130,6 +154,7 @@ export function registerTools(server: McpServer, services: Services): void {
           title,
           author: await project.resolveAuthor(),
         });
+        server.sendResourceListChanged();
 
         const treeView = await thread.list(state.activeProjectId);
 
@@ -150,14 +175,9 @@ export function registerTools(server: McpServer, services: Services): void {
           // Parent read failed — skip warning silently
         }
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Thread "${node.metadata.id}" created under "${resolvedParent}".\n\n${treeView}${summaryWarning}`,
-            },
-          ],
-        };
+        return textResult(
+          `Thread "${node.metadata.id}" created under "${resolvedParent}".\n\n${treeView}${summaryWarning}`
+        );
       } catch (error) {
         return errorResult(error);
       }
@@ -165,38 +185,26 @@ export function registerTools(server: McpServer, services: Services): void {
   );
 
   // --- thread_switch ---
-  server.tool(
+  server.registerTool(
     "thread_switch",
-    "Switch to a different thread",
     {
-      threadId: id().describe("Thread ID to switch to"),
+      title: "Switch thread",
+      description:
+        "Switch to a different thread and return its assembled context (no need to call context_get afterwards)",
+      inputSchema: {
+        threadId: id().describe("Thread ID to switch to"),
+      },
+      annotations: { ...WRITE, idempotentHint: true },
     },
     async ({ threadId }) => {
       try {
-        const state = await storage.readConfig();
-        if (!state.activeProjectId) {
-          throw new Error("No active project. Use project_create first.");
-        }
-
+        const state = await requireActiveProject();
         await thread.switch(state.activeProjectId, threadId);
-        const result = await context.assemble(
-          state.activeProjectId,
-          threadId
+        const result = await context.assemble(state.activeProjectId, threadId);
+
+        return textResult(
+          `Switched to thread "${threadId}".\n\n${formatContext(result)}`
         );
-
-        const preview =
-          result.text.length > 300
-            ? result.text.slice(0, 300) + "..."
-            : result.text;
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Switched to thread "${threadId}".\n\nContext preview (~${result.tokens} tokens):\n${preview}`,
-            },
-          ],
-        };
       } catch (error) {
         return errorResult(error);
       }
@@ -204,21 +212,17 @@ export function registerTools(server: McpServer, services: Services): void {
   );
 
   // --- thread_list ---
-  server.tool(
+  server.registerTool(
     "thread_list",
-    "Display the thread tree for the active project",
-    {},
+    {
+      title: "Show thread tree",
+      description: "Display the thread tree for the active project",
+      annotations: READ_ONLY,
+    },
     async () => {
       try {
-        const state = await storage.readConfig();
-        if (!state.activeProjectId) {
-          throw new Error("No active project. Use project_create first.");
-        }
-
-        const treeView = await thread.list(state.activeProjectId);
-        return {
-          content: [{ type: "text" as const, text: treeView }],
-        };
+        const state = await requireActiveProject();
+        return textResult(await thread.list(state.activeProjectId));
       } catch (error) {
         return errorResult(error);
       }
@@ -226,24 +230,24 @@ export function registerTools(server: McpServer, services: Services): void {
   );
 
   // --- summary_update ---
-  server.tool(
+  server.registerTool(
     "summary_update",
-    "Update the summary/content of a thread",
     {
-      content: z.string().describe("The new summary content (markdown)"),
-      threadId: id()
-        .optional()
-        .describe("Thread ID to update (defaults to active thread)"),
+      title: "Update thread summary",
+      description:
+        "Replace the summary of a thread (markdown). Keep what is still true from the previous summary.",
+      inputSchema: {
+        content: z.string().describe("The new summary content (markdown)"),
+        threadId: id()
+          .optional()
+          .describe("Thread ID to update (defaults to active thread)"),
+      },
+      annotations: { ...WRITE, destructiveHint: true, idempotentHint: true },
     },
     async ({ content, threadId }) => {
       try {
-        const state = await storage.readConfig();
-        if (!state.activeProjectId) {
-          throw new Error("No active project. Use project_create first.");
-        }
-
-        const resolvedThread =
-          threadId ?? state.activeThreadId ?? "main";
+        const state = await requireActiveProject();
+        const resolvedThread = threadId ?? state.activeThreadId ?? "main";
         const projectConfig = await storage.readProjectConfig(
           state.activeProjectId
         );
@@ -263,14 +267,7 @@ export function registerTools(server: McpServer, services: Services): void {
           content
         );
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Summary updated for thread "${resolvedThread}".`,
-            },
-          ],
-        };
+        return textResult(`Summary updated for thread "${resolvedThread}".`);
       } catch (error) {
         return errorResult(error);
       }
@@ -278,56 +275,26 @@ export function registerTools(server: McpServer, services: Services): void {
   );
 
   // --- context_get ---
-  server.tool(
+  server.registerTool(
     "context_get",
-    "Get the assembled context for the active thread (walks up the parent chain). Call this at the start of every session.",
-    {},
+    {
+      title: "Get thread context",
+      description:
+        "Get the assembled context of the active thread: the chain of summaries from the root down to it. Call it once at the start of a session.",
+      annotations: READ_ONLY,
+    },
     async () => {
       try {
-        const state = await storage.readConfig();
-        if (!state.activeProjectId || !state.activeThreadId) {
-          throw new Error(
-            "No active project/thread. Use project_create first."
-          );
-        }
-
+        const state = await requireActiveProject();
         const result = await context.assemble(
           state.activeProjectId,
-          state.activeThreadId
+          state.activeThreadId ?? "main"
         );
-
-        // Build footer with token comparison if stats exist
         const projectStats = await stats.getProjectStats(
           state.activeProjectId
         );
-        let footer = `_ThreadMind context: ~${result.tokens} tokens | depth: ${result.threadDepth} threads_`;
 
-        const totalCumulativeChars = Object.values(
-          projectStats.threads
-        ).reduce((sum, s) => sum + s.cumulativeInputLength, 0);
-        const totalUpdates = Object.values(projectStats.threads).reduce(
-          (sum, s) => sum + s.updateCount,
-          0
-        );
-
-        if (totalCumulativeChars > 0) {
-          const estimatedRawTokens = Math.ceil(
-            totalCumulativeChars / 3.5
-          );
-          const reduction = Math.round(
-            (1 - result.tokens / estimatedRawTokens) * 100
-          );
-          footer += `\n_Estimated raw history: ~${estimatedRawTokens.toLocaleString()} tokens (~${reduction}% reduction from ${totalUpdates} summary updates)_`;
-        }
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `${result.text}\n\n---\n${footer}`,
-            },
-          ],
-        };
+        return textResult(formatContext(result, projectStats));
       } catch (error) {
         return errorResult(error);
       }
@@ -335,19 +302,19 @@ export function registerTools(server: McpServer, services: Services): void {
   );
 
   // --- thread_delete ---
-  server.tool(
+  server.registerTool(
     "thread_delete",
-    "Delete a thread and all its descendants",
     {
-      threadId: id().describe("Thread ID to delete"),
+      title: "Delete thread",
+      description: "Delete a thread and all its descendants",
+      inputSchema: {
+        threadId: id().describe("Thread ID to delete"),
+      },
+      annotations: { ...WRITE, destructiveHint: true, idempotentHint: true },
     },
     async ({ threadId }) => {
       try {
-        const state = await storage.readConfig();
-        if (!state.activeProjectId) {
-          throw new Error("No active project. Use project_create first.");
-        }
-
+        const state = await requireActiveProject();
         const projectConfig = await storage.readProjectConfig(
           state.activeProjectId
         );
@@ -358,17 +325,12 @@ export function registerTools(server: McpServer, services: Services): void {
           author: await project.resolveAuthor(),
           mode: projectConfig.mode,
         });
+        server.sendResourceListChanged();
 
         const treeView = await thread.list(state.activeProjectId);
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Thread "${threadId}" and its descendants deleted.\n\n${treeView}`,
-            },
-          ],
-        };
+        return textResult(
+          `Thread "${threadId}" and its descendants deleted.\n\n${treeView}`
+        );
       } catch (error) {
         return errorResult(error);
       }
@@ -376,20 +338,21 @@ export function registerTools(server: McpServer, services: Services): void {
   );
 
   // --- thread_rebase ---
-  server.tool(
+  server.registerTool(
     "thread_rebase",
-    "Move a thread to a different parent. All descendants move with it. Similar to git rebase.",
     {
-      threadId: id().describe("ID of the thread to move"),
-      newParentId: id().describe("ID of the new parent thread"),
+      title: "Move thread",
+      description:
+        "Move a thread to a different parent. All descendants move with it. Similar to git rebase.",
+      inputSchema: {
+        threadId: id().describe("ID of the thread to move"),
+        newParentId: id().describe("ID of the new parent thread"),
+      },
+      annotations: { ...WRITE, idempotentHint: true },
     },
     async ({ threadId, newParentId }) => {
       try {
-        const state = await storage.readConfig();
-        if (!state.activeProjectId) {
-          throw new Error("No active project. Use project_create first.");
-        }
-
+        const state = await requireActiveProject();
         const projectConfig = await storage.readProjectConfig(
           state.activeProjectId
         );
@@ -403,15 +366,9 @@ export function registerTools(server: McpServer, services: Services): void {
         });
 
         const treeView = await thread.list(state.activeProjectId);
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Thread "${threadId}" moved under "${newParentId}".\n\n${treeView}`,
-            },
-          ],
-        };
+        return textResult(
+          `Thread "${threadId}" moved under "${newParentId}".\n\n${treeView}`
+        );
       } catch (error) {
         return errorResult(error);
       }
@@ -419,32 +376,33 @@ export function registerTools(server: McpServer, services: Services): void {
   );
 
   // --- threadmind_init ---
-  server.tool(
+  server.registerTool(
     "threadmind_init",
-    "Generate instruction files (CLAUDE.md, .cursorrules, etc.) to enable automatic ThreadMind integration with AI clients",
     {
-      clients: z
-        .array(z.enum(["claude", "cursor", "generic"]))
-        .optional()
-        .describe(
-          'AI clients to generate instructions for (default: all). Options: "claude", "cursor", "generic"'
-        ),
+      title: "Generate instruction files",
+      description:
+        "Write ThreadMind usage instructions into the files AI agents read. Claude Code doesn't need them: it receives these instructions from this server.",
+      inputSchema: {
+        clients: z
+          .array(z.enum(CLIENT_TARGETS))
+          .optional()
+          .describe(
+            'Files to generate: "agents" (AGENTS.md, read by Codex, Cursor, Copilot and others), "claude" (CLAUDE.md), "cursor" (.cursor/rules/threadmind.mdc), "generic" (.threadmind/instructions.md, to paste into any client). Default: agents and generic.'
+          ),
+      },
+      annotations: { ...WRITE, idempotentHint: true },
     },
     async ({ clients }) => {
       try {
-        const state = await storage.readConfig();
-        if (!state.activeProjectId) {
-          throw new Error("No active project. Use project_create first.");
-        }
-
+        const state = await requireActiveProject();
         const projectConfig = await storage.readProjectConfig(
           state.activeProjectId
         );
 
         const result = await generateInstructions({
           projectTitle: projectConfig.title,
-          basePath: process.cwd(),
-          clients: clients as ClientTarget[] | undefined,
+          basePath: await storage.workspaceRoot(),
+          clients,
         });
 
         const fileList = result.files
@@ -452,21 +410,20 @@ export function registerTools(server: McpServer, services: Services): void {
             const note =
               f.action === "created"
                 ? "created"
-                : f.action === "updated"
-                ? "updated — existing content preserved"
-                : "appended — existing content preserved";
+                : f.client === "cursor"
+                ? "updated"
+                : `${f.action} — existing content preserved`;
             return `  - ${f.client}: ${f.path} (${note})`;
           })
           .join("\n");
+        const notes =
+          result.notes.length > 0
+            ? `\n\nNotes:\n${result.notes.map((n) => `  - ${n}`).join("\n")}`
+            : "";
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Instruction files generated:\n${fileList}\n\nThreadMind section is delimited by <!-- threadmind:start/end --> markers.\nRe-run threadmind_init at any time to update the ThreadMind section without affecting your other content.`,
-            },
-          ],
-        };
+        return textResult(
+          `Instruction files generated:\n${fileList}${notes}\n\nIn Markdown files, the ThreadMind section is delimited by <!-- threadmind:start/end --> markers.\nRe-run threadmind_init at any time to update it without affecting your other content.`
+        );
       } catch (error) {
         return errorResult(error);
       }
@@ -474,19 +431,17 @@ export function registerTools(server: McpServer, services: Services): void {
   );
 
   // --- stats_show ---
-  server.tool(
+  server.registerTool(
     "stats_show",
-    "Show token savings statistics for the active ThreadMind project",
-    {},
+    {
+      title: "Show token statistics",
+      description:
+        "Show token savings statistics for the active ThreadMind project",
+      annotations: READ_ONLY,
+    },
     async () => {
       try {
-        const state = await storage.readConfig();
-        if (!state.activeProjectId || !state.activeThreadId) {
-          throw new Error(
-            "No active project/thread. Use project_create first."
-          );
-        }
-
+        const state = await requireActiveProject();
         const projectConfig = await storage.readProjectConfig(
           state.activeProjectId
         );
@@ -495,80 +450,27 @@ export function registerTools(server: McpServer, services: Services): void {
         );
         const result = await context.assemble(
           state.activeProjectId,
-          state.activeThreadId
+          state.activeThreadId ?? "main"
         );
         const tree = await storage.readTree(state.activeProjectId);
 
-        const totalThreads = Object.keys(tree.nodes).length;
-        const threadsWithStats = Object.keys(projectStats.threads).length;
-        const totalUpdates = Object.values(projectStats.threads).reduce(
-          (sum, s) => sum + s.updateCount,
-          0
+        return textResult(
+          formatStatsReport({
+            projectTitle: projectConfig.title,
+            stats: projectStats,
+            threadCount: Object.keys(tree.nodes).length,
+            context: result,
+          })
         );
-        const totalCumulativeChars = Object.values(
-          projectStats.threads
-        ).reduce((sum, s) => sum + s.cumulativeInputLength, 0);
-        const estimatedRawTokens = Math.ceil(totalCumulativeChars / 3.5);
-        const reduction =
-          estimatedRawTokens > 0
-            ? Math.round(
-                (1 - result.tokens / estimatedRawTokens) * 100
-              )
-            : 0;
-
-        // Build per-thread breakdown
-        const perThreadLines: string[] = [];
-        for (const [threadId, threadStats] of Object.entries(
-          projectStats.threads
-        )) {
-          const currentTk = Math.ceil(
-            threadStats.currentContentLength / 3.5
-          );
-          const cumulativeTk = Math.ceil(
-            threadStats.cumulativeInputLength / 3.5
-          );
-          const ratio =
-            cumulativeTk > 0
-              ? Math.round((1 - currentTk / cumulativeTk) * 100)
-              : 0;
-          perThreadLines.push(
-            `  ${threadId.padEnd(20)} ${String(threadStats.updateCount).padEnd(9)} ~${String(currentTk).padEnd(9)} ~${String(cumulativeTk).padEnd(13)} ${ratio}%`
-          );
-        }
-
-        let output = `ThreadMind Stats: "${projectConfig.title}"\n\n`;
-        output += `Overview:\n`;
-        output += `  Threads: ${totalThreads} (${threadsWithStats} with tracked updates)\n`;
-        output += `  Summary updates: ${totalUpdates}\n`;
-        output += `  Current context: ~${result.tokens} tokens (depth: ${result.threadDepth})\n\n`;
-
-        if (estimatedRawTokens > 0) {
-          output += `Token Savings (estimated):\n`;
-          output += `  Estimated raw history: ~${estimatedRawTokens.toLocaleString()} tokens\n`;
-          output += `  ThreadMind context:    ~${result.tokens} tokens\n`;
-          output += `  Reduction:             ~${reduction}%\n\n`;
-        } else {
-          output += `Token Savings:\n`;
-          output += `  No summary updates tracked yet. Use summary_update to start tracking.\n\n`;
-        }
-
-        if (perThreadLines.length > 0) {
-          output += `Per-Thread Breakdown:\n`;
-          output += `  ${"Thread".padEnd(20)} ${"Updates".padEnd(9)} ${"Current".padEnd(10)} ${"Cumulative".padEnd(14)} Ratio\n`;
-          output += perThreadLines.join("\n") + "\n\n";
-        }
-
-        output += `Method: Cumulative summary input vs current context size.\n`;
-        output += `Token estimates use ~3.5 chars/token approximation.`;
-
-        return {
-          content: [{ type: "text" as const, text: output }],
-        };
       } catch (error) {
         return errorResult(error);
       }
     }
   );
+}
+
+function textResult(text: string) {
+  return { content: [{ type: "text" as const, text }] };
 }
 
 function errorResult(error: unknown) {

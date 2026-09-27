@@ -164,6 +164,24 @@ describe("StorageService", () => {
     });
   });
 
+  describe("lazy data directory", () => {
+    it("resolves the directory when first used", async () => {
+      const dataDir = join(tempDir, "workspace", ".threadmind");
+      let resolved = false;
+      const lazy = new StorageServiceImpl(async () => {
+        resolved = true;
+        return dataDir;
+      });
+      expect(resolved).toBe(false);
+
+      await lazy.ensureInitialized();
+      await lazy.writeTree("proj", { nodes: {} });
+
+      expect((await readdir(join(dataDir, "trees")))).toEqual(["proj.json"]);
+      expect(await lazy.workspaceRoot()).toBe(join(tempDir, "workspace"));
+    });
+  });
+
   describe("ID validation", () => {
     const traversal = "../../../docs/index";
 

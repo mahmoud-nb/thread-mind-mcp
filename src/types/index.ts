@@ -69,6 +69,7 @@ export interface Services {
 
 // Service interfaces for dependency injection
 export interface StorageService {
+  workspaceRoot(): Promise<string>;
   ensureInitialized(): Promise<void>;
   withLock<T>(fn: () => Promise<T>): Promise<T>;
   readConfig(): Promise<AppState>;
