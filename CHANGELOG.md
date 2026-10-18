@@ -1,3 +1,10 @@
+# [0.6.0](https://github.com/mahmoud-nb/thread-mind-mcp/compare/v0.5.1...v0.6.0) (2026-10-18)
+
+
+### Features
+
+* add HookGuard for session reminders, compaction tracking, and git branch changes ([a4068fb](https://github.com/mahmoud-nb/thread-mind-mcp/commit/a4068fbbab1d89067e31d6ed8bcd65232b9169b2))
+* **init:** warn when Cursor would load the instructions twice ([a2f47f6](https://github.com/mahmoud-nb/thread-mind-mcp/commit/a2f47f60b0953d620e5c0d49ce96fd250f4ab1d3))
 ## [0.5.1](https://github.com/mahmoud-nb/thread-mind-mcp/compare/v0.4.2...v0.5.1) (2026-09-27)
 
 
