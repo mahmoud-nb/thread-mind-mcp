@@ -23,7 +23,8 @@ npx thread-mind-mcp
 | Claude Code | [The ThreadMind plugin](#claude-code-plugin-recommended) |
 | Claude Code without the plugin, team project | [Project scope — `.mcp.json`](#project-scope-mcp-json-shared-with-the-team) |
 | Claude Code without the plugin, personal use | [Local or user scope — `claude mcp add`](#local-and-user-scopes-personal) |
-| Cursor, Windsurf, or other MCP client | [Other MCP clients](#other-mcp-clients) |
+| Cursor, VS Code (GitHub Copilot), Copilot CLI, Codex, Gemini CLI, Windsurf | [Other AI Clients](/guide/other-clients) |
+| Another MCP client | [Other MCP clients](#other-mcp-clients) |
 
 ---
 
@@ -135,7 +136,7 @@ On native Windows, `npx` is a `.cmd` script: wrap it in `cmd /c` as in the comma
 
 ### Other MCP Clients
 
-ThreadMind uses the standard **stdio MCP transport** and works with any compatible client — Cursor, Windsurf, Continue, and others. Add it to your client's MCP configuration file:
+ThreadMind uses the standard **stdio MCP transport** and works with any compatible client. [Other AI Clients](/guide/other-clients) gives the configuration of Cursor, VS Code (GitHub Copilot), Copilot CLI, Codex, Gemini CLI and Windsurf. For another client, add ThreadMind to its MCP configuration file:
 
 ::: code-group
 
@@ -230,7 +231,7 @@ AI:  [calls project_create]
 
 The server sends its usage instructions to your AI client when it connects, including the `tm:` shortcuts: Claude Code loads the context at the start of each session with no setup file.
 
-For agents that don't read MCP server instructions, generate an `AGENTS.md` file (read by Codex, Cursor, GitHub Copilot and others):
+VS Code (GitHub Copilot), Codex and Gemini CLI read these instructions too. For agents that don't, such as Cursor, Copilot CLI or Windsurf, generate an `AGENTS.md` file (see [Other AI Clients](/guide/other-clients)):
 
 ```
 You: tm:init

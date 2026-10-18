@@ -63,6 +63,7 @@ export default defineConfig({
                 { text: "What is ThreadMind?", link: "/guide/what-is-threadmind" },
                 { text: "Getting Started", link: "/guide/getting-started" },
                 { text: "Claude Code Plugin", link: "/guide/claude-code-plugin" },
+                { text: "Other AI Clients", link: "/guide/other-clients" },
               ],
             },
             {
@@ -114,6 +115,7 @@ export default defineConfig({
                 },
                 { text: "D\u00e9marrage rapide", link: "/fr/guide/getting-started" },
                 { text: "Plugin Claude Code", link: "/fr/guide/claude-code-plugin" },
+                { text: "Autres clients IA", link: "/fr/guide/other-clients" },
               ],
             },
             {

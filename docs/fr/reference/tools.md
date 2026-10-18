@@ -288,7 +288,7 @@ Voir [Assemblage du contexte](/fr/guide/context-assembly) pour les détails.
 |-------|---------|--------|
 | `agents` | `AGENTS.md` | Codex, Cursor, GitHub Copilot et d'autres agents |
 | `claude` | `CLAUDE.md` | Claude Code — inutile, il reçoit les instructions du serveur |
-| `cursor` | `.cursor/rules/threadmind.mdc` | Cursor, comme règle de projet toujours appliquée |
+| `cursor` | `.cursor/rules/threadmind.mdc` | Cursor, comme règle de projet toujours appliquée, à la place d'`AGENTS.md` (Cursor lit les deux) |
 | `generic` | `.threadmind/instructions.md` | À coller dans les instructions personnalisées de n'importe quel client |
 
 Dans les fichiers Markdown, la section ThreadMind est placée entre les marqueurs `<!-- threadmind:start -->` et `<!-- threadmind:end -->` : le reste du fichier est préservé. Le fichier de règle Cursor est entièrement généré.

@@ -23,7 +23,8 @@ npx thread-mind-mcp
 | Claude Code | [Le plugin ThreadMind](#plugin-claude-code-recommande) |
 | Claude Code sans le plugin, projet en équipe | [Portée projet — `.mcp.json`](#portee-projet-mcp-json-partage-avec-l-equipe) |
 | Claude Code sans le plugin, usage personnel | [Portées locale et utilisateur — `claude mcp add`](#portees-locale-et-utilisateur-personnel) |
-| Cursor, Windsurf ou autre client MCP | [Autres clients MCP](#autres-clients-mcp) |
+| Cursor, VS Code (GitHub Copilot), Copilot CLI, Codex, Gemini CLI, Windsurf | [Autres clients IA](/fr/guide/other-clients) |
+| Un autre client MCP | [Autres clients MCP](#autres-clients-mcp) |
 
 ---
 
@@ -135,7 +136,7 @@ Sous Windows natif, `npx` est un script `.cmd` : enveloppez-le dans `cmd /c` com
 
 ### Autres clients MCP
 
-ThreadMind utilise le transport **stdio MCP standard** et fonctionne avec tout client compatible — Cursor, Windsurf, Continue, et autres. Ajoutez-le dans le fichier de configuration MCP de votre client :
+ThreadMind utilise le transport **stdio MCP standard** et fonctionne avec tout client compatible. [Autres clients IA](/fr/guide/other-clients) donne la configuration de Cursor, VS Code (GitHub Copilot), Copilot CLI, Codex, Gemini CLI et Windsurf. Pour un autre client, ajoutez ThreadMind à son fichier de configuration MCP :
 
 ::: code-group
 
@@ -156,7 +157,7 @@ ThreadMind utilise le transport **stdio MCP standard** et fonctionne avec tout c
     "thread-mind": {
       "type": "stdio",
       "command": "cmd",
-      "args": ["/c", "npx", "thread-mind-mcp"],
+      "args": ["/c", "npx", "-y", "thread-mind-mcp"],
       "env": {}
     }
   }
@@ -180,7 +181,7 @@ Si vous utilisez **Volta**, son shim `npx` peut ne pas être résolvable quand v
     "thread-mind": {
       "type": "stdio",
       "command": "cmd",
-      "args": ["/c", "volta", "run", "npx", "thread-mind-mcp"],
+      "args": ["/c", "volta", "run", "npx", "-y", "thread-mind-mcp"],
       "env": {}
     }
   }
@@ -230,7 +231,7 @@ IA :   [appelle project_create]
 
 Le serveur envoie ses consignes d'utilisation à votre client IA dès la connexion, raccourcis `tm:` compris : Claude Code charge le contexte au début de chaque session sans aucun fichier de configuration.
 
-Pour les agents qui ne lisent pas les instructions de serveur MCP, générez un fichier `AGENTS.md` (lu par Codex, Cursor, GitHub Copilot et d'autres) :
+VS Code (GitHub Copilot), Codex et Gemini CLI lisent aussi ces consignes. Pour les agents qui ne les lisent pas, comme Cursor, Copilot CLI ou Windsurf, générez un fichier `AGENTS.md` (voir [Autres clients IA](/fr/guide/other-clients)) :
 
 ```
 Vous : tm:init

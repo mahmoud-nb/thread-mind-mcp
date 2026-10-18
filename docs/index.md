@@ -46,7 +46,7 @@ In Claude Code, install the plugin:
 /plugin install thread-mind@thread-mind
 ```
 
-In any other MCP client, add the server:
+In any other MCP client, add the server ([where each client declares it](/guide/other-clients)):
 
 ::: code-group
 
@@ -67,7 +67,7 @@ In any other MCP client, add the server:
     "thread-mind": {
       "type": "stdio",
       "command": "cmd",
-      "args": ["/c", "npx", "thread-mind-mcp"],
+      "args": ["/c", "npx", "-y", "thread-mind-mcp"],
       "env": {}
     }
   }

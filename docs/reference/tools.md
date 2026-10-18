@@ -288,7 +288,7 @@ Write the server's usage instructions into files read by agents that don't recei
 |--------|------|---------|
 | `agents` | `AGENTS.md` | Codex, Cursor, GitHub Copilot and other agents |
 | `claude` | `CLAUDE.md` | Claude Code — not needed, it receives the server instructions |
-| `cursor` | `.cursor/rules/threadmind.mdc` | Cursor, as an always-applied project rule |
+| `cursor` | `.cursor/rules/threadmind.mdc` | Cursor, as an always-applied project rule, instead of `AGENTS.md` (Cursor reads both) |
 | `generic` | `.threadmind/instructions.md` | Paste into any client's custom instructions |
 
 In Markdown files, the ThreadMind section sits between `<!-- threadmind:start -->` and `<!-- threadmind:end -->` markers, so the rest of the file is preserved. The Cursor rule file is entirely generated.
