@@ -18,6 +18,7 @@ For Claude Code, use the [plugin](/guide/claude-code-plugin) instead.
 | [Codex](#codex) | `~/.codex/config.toml` or `.codex/config.toml` | Sent by the server | Start directory |
 | [Gemini CLI](#gemini-cli) | `.gemini/settings.json` or `~/.gemini/settings.json` | Sent by the server | Start directory |
 | [Windsurf](#windsurf) | `mcp_config.json` | `AGENTS.md` | [Check it](#check-the-setup) |
+| [Claude Desktop (chat)](#claude-desktop-chat) | `claude_desktop_config.json` | Claude Project instructions, if needed | `THREADMIND_ROOT` |
 
 To generate `AGENTS.md`, ask the AI for `tm:init` once the server is set up: it calls `threadmind_init`. Commit the file so that the whole team gets it.
 
@@ -172,6 +173,46 @@ Windsurf, now Devin Desktop, reads MCP servers from `mcp_config.json`: `~/.confi
 **Usage instructions:** Cascade applies the `AGENTS.md` at the root of the project to every conversation: generate it with `tm:init`.
 
 **Project folder:** [check where ThreadMind stores its data](#check-the-setup). If it isn't in your project, set `THREADMIND_ROOT` (see [Workspace location](/guide/getting-started#workspace-location)).
+
+## Claude Desktop (chat)
+
+This section is for conversations in the Claude Desktop chat. The **Code** tab of the desktop app runs Claude Code: use the [plugin](/guide/claude-code-plugin) there.
+
+A chat has no project folder, so ThreadMind can't find your project by itself: give its path in `THREADMIND_ROOT`. In Claude Desktop, open **Settings › Developer › Edit Config**, which opens `claude_desktop_config.json` (`~/Library/Application Support/Claude/` on macOS, `%APPDATA%\Claude\` on Windows), and add:
+
+::: code-group
+
+```json [macOS / Linux]
+{
+  "mcpServers": {
+    "thread-mind": {
+      "command": "npx",
+      "args": ["-y", "thread-mind-mcp"],
+      "env": { "THREADMIND_ROOT": "/Users/you/projects/my-app" }
+    }
+  }
+}
+```
+
+```json [Windows]
+{
+  "mcpServers": {
+    "thread-mind": {
+      "command": "npx",
+      "args": ["-y", "thread-mind-mcp"],
+      "env": { "THREADMIND_ROOT": "C:\\Users\\you\\projects\\my-app" }
+    }
+  }
+}
+```
+
+:::
+
+Then quit Claude Desktop completely and start it again. If ThreadMind doesn't show up among the connectors, read `mcp-server-thread-mind.log`, in `~/Library/Logs/Claude` on macOS or `%APPDATA%\Claude\logs` on Windows.
+
+**One project per entry:** `THREADMIND_ROOT` pins the server to one project. For another project, add a second entry with its own name and path, such as `thread-mind-shop`.
+
+**Usage instructions:** if Claude doesn't know the `tm:` shortcuts, ask it for `threadmind_init` with `clients: ["generic"]`, which writes `.threadmind/instructions.md` in the project. Paste that file into the instructions of a Claude Project, and talk about the project's work in that Claude Project.
 
 ## Other clients
 

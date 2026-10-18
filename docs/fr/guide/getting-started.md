@@ -23,7 +23,7 @@ npx thread-mind-mcp
 | Claude Code | [Le plugin ThreadMind](#plugin-claude-code-recommande) |
 | Claude Code sans le plugin, projet en équipe | [Portée projet — `.mcp.json`](#portee-projet-mcp-json-partage-avec-l-equipe) |
 | Claude Code sans le plugin, usage personnel | [Portées locale et utilisateur — `claude mcp add`](#portees-locale-et-utilisateur-personnel) |
-| Cursor, VS Code (GitHub Copilot), Copilot CLI, Codex, Gemini CLI, Windsurf | [Autres clients IA](/fr/guide/other-clients) |
+| Cursor, VS Code (GitHub Copilot), Copilot CLI, Codex, Gemini CLI, Windsurf, Claude Desktop | [Autres clients IA](/fr/guide/other-clients) |
 | Un autre client MCP | [Autres clients MCP](#autres-clients-mcp) |
 
 ---
