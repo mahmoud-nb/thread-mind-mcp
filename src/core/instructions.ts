@@ -211,6 +211,17 @@ export async function generateInstructions(opts: {
     );
   }
 
+  // Cursor reads AGENTS.md as well as its project rules
+  if (
+    clients.includes("cursor") &&
+    (clients.includes("agents") ||
+      hasSection(await readIfExists(getFilePath("agents", opts.basePath))))
+  ) {
+    result.notes.push(
+      "Cursor reads AGENTS.md as well as its rules, so it loads the ThreadMind instructions twice: keep either AGENTS.md or the Cursor rule."
+    );
+  }
+
   const claudePath = join(opts.basePath, "CLAUDE.md");
   if (!clients.includes("claude") && hasSection(await readIfExists(claudePath))) {
     result.notes.push(

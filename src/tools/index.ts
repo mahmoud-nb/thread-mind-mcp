@@ -546,7 +546,7 @@ Files recorded with it, to flag it when they change: ${listPaths(recorded)}.`
           .array(z.enum(CLIENT_TARGETS))
           .optional()
           .describe(
-            'Files to generate: "agents" (AGENTS.md, read by Codex, Cursor, Copilot and others), "claude" (CLAUDE.md), "cursor" (.cursor/rules/threadmind.mdc), "generic" (.threadmind/instructions.md, to paste into any client). Default: agents and generic.'
+            'Files to generate: "agents" (AGENTS.md, read by Codex, Cursor, Copilot and others), "claude" (CLAUDE.md), "cursor" (.cursor/rules/threadmind.mdc, instead of AGENTS.md for Cursor), "generic" (.threadmind/instructions.md, to paste into any client). Default: agents and generic.'
           ),
       },
       annotations: { ...WRITE, idempotentHint: true },

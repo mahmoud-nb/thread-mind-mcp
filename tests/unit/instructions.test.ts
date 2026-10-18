@@ -103,6 +103,25 @@ describe("generateInstructions", () => {
     expect(again.files[0].action).toBe("updated");
   });
 
+  it("warns that Cursor would load both AGENTS.md and its rule", async () => {
+    const both = await generateInstructions({
+      projectTitle: "Test Project",
+      basePath: tempDir,
+      clients: ["agents", "cursor"],
+    });
+    expect(both.notes).toEqual([
+      expect.stringContaining("Cursor reads AGENTS.md as well as its rules"),
+    ]);
+
+    // Also when AGENTS.md was generated earlier
+    const later = await generateInstructions({
+      projectTitle: "Test Project",
+      basePath: tempDir,
+      clients: ["cursor"],
+    });
+    expect(later.notes).toHaveLength(1);
+  });
+
   it("generates generic instructions in .threadmind/", async () => {
     await generateInstructions({
       projectTitle: "Test Project",

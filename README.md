@@ -121,7 +121,18 @@ claude mcp add --scope project thread-mind -- cmd /c volta run npx -y thread-min
 
 ### Configure with other MCP clients
 
-ThreadMind uses the **stdio transport**, compatible with any MCP client (Cursor, Windsurf, Codex…). Add the same `mcpServers` entry as in `.mcp.json` above to your client's MCP configuration file.
+ThreadMind uses the **stdio transport**, compatible with any MCP client. The command is always `npx -y thread-mind-mcp`; what changes is where each client declares it, and whether it reads the usage instructions the server sends:
+
+| Client | Server configuration | Usage instructions |
+|--------|----------------------|--------------------|
+| Cursor | `.cursor/mcp.json` or `~/.cursor/mcp.json` | `AGENTS.md` |
+| VS Code (GitHub Copilot) | `.vscode/mcp.json` (`servers` key) or `.mcp.json` | Sent by the server |
+| GitHub Copilot CLI | `.mcp.json` or `copilot mcp add thread-mind -- npx -y thread-mind-mcp` | `AGENTS.md` |
+| Codex | `codex mcp add thread-mind -- npx -y thread-mind-mcp` (`~/.codex/config.toml`) | Sent by the server |
+| Gemini CLI | `.gemini/settings.json` or `~/.gemini/settings.json` | Sent by the server |
+| Windsurf (Devin Desktop) | `mcp_config.json` | `AGENTS.md` |
+
+Claude Code, VS Code and Copilot CLI share the `.mcp.json` file at the repository root. See [Other AI Clients](https://mahmoud-nb.github.io/thread-mind-mcp/guide/other-clients) for each client's configuration.
 
 ### Workspace location
 
@@ -147,7 +158,7 @@ A client that starts servers outside your project without advertising roots (for
 
 ### Teach your AI client to use ThreadMind
 
-The server sends its usage instructions when the client connects (MCP server instructions): Claude Code needs no setup file. For agents that don't read them, run `threadmind_init` to generate an `AGENTS.md` file, read by Codex, Cursor, GitHub Copilot and others.
+The server sends its usage instructions when the client connects (MCP server instructions): Claude Code, VS Code (GitHub Copilot), Codex and Gemini CLI need no setup file. For agents that don't read them, such as Cursor, Copilot CLI or Windsurf, run `threadmind_init` to generate an `AGENTS.md` file.
 
 ---
 
@@ -357,7 +368,7 @@ Writes the same instructions the server sends to MCP clients:
 |--------|------|---------|
 | `agents` | `AGENTS.md` | Codex, Cursor, GitHub Copilot and other agents |
 | `claude` | `CLAUDE.md` | Claude Code — not needed, it receives the server instructions |
-| `cursor` | `.cursor/rules/threadmind.mdc` | Cursor, as an always-applied project rule |
+| `cursor` | `.cursor/rules/threadmind.mdc` | Cursor, as an always-applied project rule, instead of `AGENTS.md` (Cursor reads both) |
 | `generic` | `.threadmind/instructions.md` | Paste into any client's custom instructions |
 
 Earlier versions wrote `CLAUDE.md` and `.cursorrules`. `threadmind_init` moves the ThreadMind section out of `.cursorrules` when it generates the Cursor rule, and reports any section left in either file.
