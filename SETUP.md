@@ -192,3 +192,20 @@ If it answers `Invalid or expired Registry JWT token`, run `mcp-publisher login 
 | `Invalid or expired Registry JWT token` | `mcp-publisher login github` |
 | Version already exists | A version can't be republished: bump the version (npm release), then publish again |
 | `mcp-publisher` is not recognized | Open a new terminal after changing `PATH`, or run `$env:USERPROFILE\tools\mcp-publisher.exe` |
+
+## Publishing the skill on Agensi
+
+[Agensi](https://www.agensi.io) is a marketplace of agent skills: it lists skills in the SKILL.md format, not MCP servers. ThreadMind is published there as the `thread-mind` skill, in [`skills/thread-mind/`](skills/thread-mind/), which teaches agents to use the server and shows how to set it up.
+
+1. Build the archive:
+
+   ```bash
+   npm run skill:pack
+   ```
+
+   This writes `skills/dist/thread-mind.zip`: a single `thread-mind/` folder with `SKILL.md` at its root, text files only, as Agensi requires.
+2. On Agensi, create an account and connect Stripe from the creator dashboard: Agensi asks for it even for free skills.
+3. In the dashboard, choose **Submit a Skill**, upload the archive, then fill in the listing with the texts of [`skills/agensi-listing.md`](skills/agensi-listing.md).
+4. Agensi runs a security scan, an AI review and a human check, usually within 24 to 48 hours. If the scan raises a question, the listing file has notes for the reviewers.
+
+To update the skill, change `skills/thread-mind/`, run `npm run skill:pack` again and upload the new archive. Keep the skill in step with the server: the tests check that it teaches every shortcut and documents every tool.

@@ -131,6 +131,7 @@ ThreadMind uses the **stdio transport**, compatible with any MCP client. The com
 | Codex | `codex mcp add thread-mind -- npx -y thread-mind-mcp` (`~/.codex/config.toml`) | Sent by the server |
 | Gemini CLI | `.gemini/settings.json` or `~/.gemini/settings.json` | Sent by the server |
 | Windsurf (Devin Desktop) | `mcp_config.json` | `AGENTS.md` |
+| Claude Desktop (chat) | `claude_desktop_config.json`, with `THREADMIND_ROOT` set to the project | Claude Project instructions, if needed |
 
 Claude Code, VS Code and Copilot CLI share the `.mcp.json` file at the repository root. See [Other AI Clients](https://mahmoud-nb.github.io/thread-mind-mcp/guide/other-clients) for each client's configuration.
 
