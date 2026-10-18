@@ -73,41 +73,40 @@ La propriété évite les modifications accidentelles ; ce n'est pas un contrôl
 
 ## Workflow quotidien
 
-### Développement au quotidien
+### Travailler sur une branche de fonctionnalité
 
 ```bash
-# Début de journée : récupérer les derniers threads
 git pull
-
-# Voir l'arborescence complète de l'équipe
-# → thread_list
-
-main
-├── auth (sarah-7b2c)
-│   └── auth-tests (sarah-7b2c)
-├── routes-api (mahmoud-a3f9)
-│   └── validation-api (mahmoud-a3f9)
-└── frontend (alex-1e5f)
+git switch -c feature/api-docs
 ```
-
-### Brancher depuis le thread d'un collègue
 
 ```
 Vous : Crée un thread "Documentation API" sous "routes-api"
 
 IA :   ✓ Thread "documentation-api" créé sous "routes-api".
-       Auteur : sarah-7b2c (vous)
+       Lié à la branche git "feature/api-docs" : il devient le thread actif dès que cette branche est récupérée.
+
+       main
+       ├── auth
+       │   └── auth-tests
+       ├── routes-api [branch: feature/routes-api]
+       │   └── documentation-api [branch: feature/api-docs] ← active
+       └── frontend
 ```
 
-Maintenant vous êtes propriétaire de `documentation-api` et pouvez mettre à jour son résumé, même si son parent `routes-api` appartient à un autre collègue.
+Vous êtes propriétaire de `documentation-api` et pouvez mettre à jour son résumé, même si son parent `routes-api` appartient à un autre collègue. L'auteur, le statut et la branche d'un thread sont affichés par sa ressource `threadmind://thread/{id}`.
 
-### Partager votre travail
+### Le partager avec le code
+
+Commitez les fichiers de threads avec le code qu'ils décrivent, pour qu'ils soient relus dans la même pull request :
 
 ```bash
-git add .threadmind/
-git commit -m "Ajout du thread documentation API"
-git push
+git add .threadmind/ src/
+git commit -m "docs(api): documenter les routes"
+git push -u origin feature/api-docs
 ```
+
+Un collègue qui récupère `feature/api-docs` démarre sa session suivante sur `documentation-api`. Une fois la branche fusionnée, intégrez le thread dans son parent avec `thread_merge`, ou clôturez-le avec `thread_status`.
 
 ## Comportement de merge Git
 

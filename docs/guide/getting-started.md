@@ -21,8 +21,8 @@ npx thread-mind-mcp
 | Situation | Recommended approach |
 |-----------|---------------------|
 | Claude Code | [The ThreadMind plugin](#claude-code-plugin-recommended) |
-| Claude Code without the plugin, personal use | [Global — `~/.claude/settings.json`](#global-personal-all-projects) |
-| Claude Code without the plugin, team project | [Project — `.mcp.json`](#per-project-team-mcp-json) |
+| Claude Code without the plugin, team project | [Project scope — `.mcp.json`](#project-scope-mcp-json-shared-with-the-team) |
+| Claude Code without the plugin, personal use | [Local or user scope — `claude mcp add`](#local-and-user-scopes-personal) |
 | Cursor, Windsurf, or other MCP client | [Other MCP clients](#other-mcp-clients) |
 
 ---
@@ -38,11 +38,71 @@ The plugin installs the server and loads the active thread's context at the star
 
 ---
 
-### Claude Code — Global (personal, all projects)
+### Claude Code without the plugin
 
-Available in every project without any per-project setup. Recommended if you're the only one on the project or want ThreadMind everywhere.
+`claude mcp add` registers the server. Its `--scope` option decides where the configuration is stored and who gets it:
 
-**Via CLI (easiest):**
+| Scope | Stored in | Applies to |
+|-------|-----------|-----------|
+| `local` (default) | `~/.claude.json`, under the current project | You, in this project |
+| `project` | `.mcp.json` at the project root | Everyone who clones the repository |
+| `user` | `~/.claude.json` | You, in every project |
+
+Run the commands from the project root: the `local` and `project` scopes apply to the current directory.
+
+::: warning
+Claude Code doesn't read MCP servers from `~/.claude/settings.json` or `.claude/settings.json`: those files hold preferences, permissions and hooks. Use `claude mcp add` or `.mcp.json`, and leave `~/.claude.json` to Claude Code, which writes it itself.
+:::
+
+#### Project scope (`.mcp.json`, shared with the team)
+
+::: code-group
+
+```bash [macOS / Linux]
+claude mcp add --scope project thread-mind -- npx -y thread-mind-mcp
+```
+
+```bash [Windows]
+claude mcp add --scope project thread-mind -- cmd /c npx -y thread-mind-mcp
+```
+
+:::
+
+This writes `.mcp.json` at the project root; you can also create it by hand:
+
+::: code-group
+
+```json [macOS / Linux]
+{
+  "mcpServers": {
+    "thread-mind": {
+      "command": "npx",
+      "args": ["-y", "thread-mind-mcp"]
+    }
+  }
+}
+```
+
+```json [Windows]
+{
+  "mcpServers": {
+    "thread-mind": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "thread-mind-mcp"],
+      "env": {}
+    }
+  }
+}
+```
+
+:::
+
+**Commit `.mcp.json`**: teammates get the server when they pull. For security, Claude Code asks each of them to approve a server declared by the repository the first time it starts there (`claude mcp reset-project-choices` resets that choice).
+
+#### Local and user scopes (personal)
+
+For you only, in this project:
 
 ::: code-group
 
@@ -56,88 +116,19 @@ claude mcp add thread-mind -- cmd /c npx -y thread-mind-mcp
 
 :::
 
-**Or manually** in `~/.claude/settings.json`:
+For you, in every project, add `--scope user` (`claude mcp add --scope user thread-mind -- …`). In a repository without a ThreadMind project, the server stays idle until you create one.
 
-::: code-group
+#### Check the configuration
 
-```json [macOS / Linux]
-{
-  "mcpServers": {
-    "thread-mind": {
-      "command": "npx",
-      "args": ["-y", "thread-mind-mcp"]
-    }
-  }
-}
+```bash
+claude mcp list
+claude mcp get thread-mind
 ```
 
-```json [Windows]
-{
-  "mcpServers": {
-    "thread-mind": {
-      "type": "stdio",
-      "command": "cmd",
-      "args": ["/c", "npx", "-y", "thread-mind-mcp"],
-      "env": {}
-    }
-  }
-}
-```
+Inside a session, `/mcp` shows the server's status and tools. To remove it: `claude mcp remove thread-mind --scope <scope>`.
 
-:::
-
----
-
-### Claude Code — Per-project / Team (`.mcp.json`)
-
-Creates a `.mcp.json` file at the project root. **Commit it to git** — teammates automatically get the MCP configured when they pull, with no manual setup required.
-
-**Via CLI (easiest):**
-
-::: code-group
-
-```bash [macOS / Linux]
-claude mcp add thread-mind --scope project -- npx -y thread-mind-mcp
-```
-
-```bash [Windows]
-claude mcp add thread-mind --scope project -- cmd /c npx -y thread-mind-mcp
-```
-
-:::
-
-This creates a `.mcp.json` at your project root:
-
-::: code-group
-
-```json [macOS / Linux]
-{
-  "mcpServers": {
-    "thread-mind": {
-      "command": "npx",
-      "args": ["-y", "thread-mind-mcp"]
-    }
-  }
-}
-```
-
-```json [Windows]
-{
-  "mcpServers": {
-    "thread-mind": {
-      "type": "stdio",
-      "command": "cmd",
-      "args": ["/c", "npx", "-y", "thread-mind-mcp"],
-      "env": {}
-    }
-  }
-}
-```
-
-:::
-
-::: tip
-`.mcp.json` is different from `.claude/settings.json`. The latter stores personal Claude Code preferences (permissions, hooks) and is typically gitignored. `.mcp.json` is specifically for shared MCP server configuration.
+::: tip Windows
+On native Windows, `npx` is a `.cmd` script: wrap it in `cmd /c` as in the commands above, so the MCP stdio transport can start it.
 :::
 
 ---
@@ -204,8 +195,8 @@ Via CLI: `claude mcp add thread-mind -- cmd /c volta run npx -y thread-mind-mcp`
 ThreadMind stores its data in `.threadmind/` at the root of your workspace, found in this order:
 
 1. The `THREADMIND_ROOT` environment variable, if set
-2. The workspace roots advertised by your MCP client (a root that already contains `.threadmind/` wins)
-3. The directory the server was started from — your project, with Claude Code
+2. The workspace roots advertised by your MCP client (a root that already contains `.threadmind/` wins). Claude Code advertises the directory you started it in, plus those added with `--add-dir`: start it from the project root
+3. The directory the server was started from
 
 A client that starts servers outside your project without advertising roots needs `THREADMIND_ROOT`:
 

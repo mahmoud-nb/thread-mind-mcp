@@ -21,8 +21,8 @@ npx thread-mind-mcp
 | Situation | Approche recommandée |
 |-----------|---------------------|
 | Claude Code | [Le plugin ThreadMind](#plugin-claude-code-recommande) |
-| Claude Code sans le plugin, usage personnel | [Global — `~/.claude/settings.json`](#global-personnel-tous-les-projets) |
-| Claude Code sans le plugin, projet en équipe | [Par projet — `.mcp.json`](#par-projet-equipe-mcp-json) |
+| Claude Code sans le plugin, projet en équipe | [Portée projet — `.mcp.json`](#portee-projet-mcp-json-partage-avec-l-equipe) |
+| Claude Code sans le plugin, usage personnel | [Portées locale et utilisateur — `claude mcp add`](#portees-locale-et-utilisateur-personnel) |
 | Cursor, Windsurf ou autre client MCP | [Autres clients MCP](#autres-clients-mcp) |
 
 ---
@@ -38,11 +38,71 @@ Le plugin installe le serveur et charge le contexte du thread actif au début de
 
 ---
 
-### Claude Code — Global (personnel, tous les projets)
+### Claude Code sans le plugin
 
-Disponible dans tous vos projets sans configuration supplémentaire. Recommandé si vous êtes seul sur le projet ou si vous souhaitez ThreadMind partout.
+`claude mcp add` déclare le serveur. Son option `--scope` décide où la configuration est enregistrée et pour qui :
 
-**Via CLI (le plus simple) :**
+| Portée | Enregistrée dans | S'applique à |
+|--------|------------------|--------------|
+| `local` (par défaut) | `~/.claude.json`, sous le projet courant | Vous, dans ce projet |
+| `project` | `.mcp.json` à la racine du projet | Toute personne qui clone le dépôt |
+| `user` | `~/.claude.json` | Vous, dans tous vos projets |
+
+Lancez les commandes depuis la racine du projet : les portées `local` et `project` s'appliquent au dossier courant.
+
+::: warning
+Claude Code ne lit pas de serveurs MCP dans `~/.claude/settings.json` ni dans `.claude/settings.json` : ces fichiers contiennent les préférences, les permissions et les hooks. Utilisez `claude mcp add` ou `.mcp.json`, et laissez `~/.claude.json` à Claude Code, qui l'écrit lui-même.
+:::
+
+#### Portée projet (`.mcp.json`, partagé avec l'équipe)
+
+::: code-group
+
+```bash [macOS / Linux]
+claude mcp add --scope project thread-mind -- npx -y thread-mind-mcp
+```
+
+```bash [Windows]
+claude mcp add --scope project thread-mind -- cmd /c npx -y thread-mind-mcp
+```
+
+:::
+
+La commande écrit `.mcp.json` à la racine du projet ; vous pouvez aussi le créer à la main :
+
+::: code-group
+
+```json [macOS / Linux]
+{
+  "mcpServers": {
+    "thread-mind": {
+      "command": "npx",
+      "args": ["-y", "thread-mind-mcp"]
+    }
+  }
+}
+```
+
+```json [Windows]
+{
+  "mcpServers": {
+    "thread-mind": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "thread-mind-mcp"],
+      "env": {}
+    }
+  }
+}
+```
+
+:::
+
+**Commitez `.mcp.json`** : vos coéquipiers récupèrent le serveur avec un `git pull`. Par sécurité, Claude Code demande à chacun d'approuver un serveur déclaré par le dépôt la première fois qu'il y démarre (`claude mcp reset-project-choices` réinitialise ce choix).
+
+#### Portées locale et utilisateur (personnel)
+
+Pour vous seul, dans ce projet :
 
 ::: code-group
 
@@ -51,93 +111,24 @@ claude mcp add thread-mind -- npx -y thread-mind-mcp
 ```
 
 ```bash [Windows]
-claude mcp add thread-mind -- cmd /c npx thread-mind-mcp
+claude mcp add thread-mind -- cmd /c npx -y thread-mind-mcp
 ```
 
 :::
 
-**Ou manuellement** dans `~/.claude/settings.json` :
+Pour vous, dans tous vos projets, ajoutez `--scope user` (`claude mcp add --scope user thread-mind -- …`). Dans un dépôt sans projet ThreadMind, le serveur reste inactif jusqu'à ce que vous en créiez un.
 
-::: code-group
+#### Vérifier la configuration
 
-```json [macOS / Linux]
-{
-  "mcpServers": {
-    "thread-mind": {
-      "command": "npx",
-      "args": ["-y", "thread-mind-mcp"]
-    }
-  }
-}
+```bash
+claude mcp list
+claude mcp get thread-mind
 ```
 
-```json [Windows]
-{
-  "mcpServers": {
-    "thread-mind": {
-      "type": "stdio",
-      "command": "cmd",
-      "args": ["/c", "npx", "thread-mind-mcp"],
-      "env": {}
-    }
-  }
-}
-```
+Dans une session, `/mcp` affiche l'état du serveur et ses outils. Pour le retirer : `claude mcp remove thread-mind --scope <portée>`.
 
-:::
-
----
-
-### Claude Code — Par projet / Équipe (`.mcp.json`)
-
-Crée un fichier `.mcp.json` à la racine du projet. **Commitez-le dans git** — vos coéquipiers ont automatiquement le MCP configuré après un `git pull`, sans aucune configuration manuelle.
-
-**Via CLI (le plus simple) :**
-
-::: code-group
-
-```bash [macOS / Linux]
-claude mcp add thread-mind --scope project -- npx -y thread-mind-mcp
-```
-
-```bash [Windows]
-claude mcp add thread-mind --scope project -- cmd /c npx thread-mind-mcp
-```
-
-:::
-
-Cela crée un `.mcp.json` à la racine du projet :
-
-::: code-group
-
-```json [macOS / Linux]
-{
-  "mcpServers": {
-    "thread-mind": {
-      "command": "npx",
-      "args": ["-y", "thread-mind-mcp"]
-    }
-  }
-}
-```
-
-```json [Windows]
-{
-  "mcpServers": {
-    "thread-mind": {
-      "type": "stdio",
-      "command": "cmd",
-      "args": ["/c", "npx", "thread-mind-mcp"],
-      "env": {}
-    }
-  }
-}
-```
-
-:::
-
-::: tip
-`.mcp.json` est différent de `.claude/settings.json`. Ce dernier stocke les préférences personnelles de Claude Code (permissions, hooks) et est généralement gitignored. `.mcp.json` est spécifiquement conçu pour la configuration MCP partagée en équipe.
+::: tip Windows
+Sous Windows natif, `npx` est un script `.cmd` : enveloppez-le dans `cmd /c` comme dans les commandes ci-dessus, pour que le transport stdio MCP puisse le lancer.
 :::
 
 ---
@@ -204,8 +195,8 @@ Via CLI : `claude mcp add thread-mind -- cmd /c volta run npx -y thread-mind-mcp
 ThreadMind stocke ses données dans `.threadmind/` à la racine de votre workspace, déterminée dans cet ordre :
 
 1. La variable d'environnement `THREADMIND_ROOT`, si elle est définie
-2. Les racines (roots) de workspace annoncées par votre client MCP (celle qui contient déjà `.threadmind/` est prioritaire)
-3. Le dossier depuis lequel le serveur a été lancé — votre projet, avec Claude Code
+2. Les racines (roots) de workspace annoncées par votre client MCP (celle qui contient déjà `.threadmind/` est prioritaire). Claude Code annonce le dossier depuis lequel vous l'avez lancé, plus ceux ajoutés avec `--add-dir` : lancez-le depuis la racine du projet
+3. Le dossier depuis lequel le serveur a été lancé
 
 Un client qui lance les serveurs hors de votre projet sans annoncer de racines a besoin de `THREADMIND_ROOT` :
 

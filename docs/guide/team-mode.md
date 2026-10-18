@@ -73,41 +73,40 @@ Ownership prevents accidental edits; it is not access control. Anyone with write
 
 ## Workflow
 
-### Daily Development
+### Work on a feature branch
 
 ```bash
-# Start of day: pull latest threads
 git pull
-
-# View the full team tree
-# → thread_list
-
-main
-├── auth (sarah-7b2c)
-│   └── auth-tests (sarah-7b2c)
-├── api-routes (mahmoud-a3f9)
-│   └── api-validation (mahmoud-a3f9)
-└── frontend (alex-1e5f)
+git switch -c feature/api-docs
 ```
-
-### Branching from a Teammate
 
 ```
 You: Create a thread "API Documentation" under "api-routes"
 
 AI:  ✓ Thread "api-documentation" created under "api-routes".
-     Author: sarah-7b2c (you)
+     Linked to git branch "feature/api-docs": it becomes the active thread whenever this branch is checked out.
+
+     main
+     ├── auth
+     │   └── auth-tests
+     ├── api-routes [branch: feature/api-routes]
+     │   └── api-documentation [branch: feature/api-docs] ← active
+     └── frontend
 ```
 
-Now you own `api-documentation` and can update its summary, even though its parent `api-routes` belongs to another teammate.
+You own `api-documentation` and can update its summary, even though its parent `api-routes` belongs to another teammate. A thread's author, status and branch are shown by its `threadmind://thread/{id}` resource.
 
-### Sharing Your Work
+### Share it with the code
+
+Commit the thread files with the code they describe, so they are reviewed in the same pull request:
 
 ```bash
-git add .threadmind/
-git commit -m "Add API documentation thread"
-git push
+git add .threadmind/ src/
+git commit -m "docs(api): document the routes"
+git push -u origin feature/api-docs
 ```
+
+A teammate who checks out `feature/api-docs` starts their next session on `api-documentation`. Once the branch is merged, fold the thread into its parent with `thread_merge`, or close it with `thread_status`.
 
 ## Git Merge Behavior
 

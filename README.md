@@ -70,11 +70,20 @@ Or install globally:
 npm install -g thread-mind-mcp
 ```
 
-### Configure with Claude Code
+### Configure with Claude Code (without the plugin)
 
-Add to your Claude Code MCP settings (`~/.claude/settings.json` or project `.claude/settings.json`):
+Run from your project root. To share the server with your team, add it at **project scope**: Claude Code writes `.mcp.json` at the project root, which you commit.
 
-**macOS / Linux:**
+```bash
+# macOS / Linux
+claude mcp add --scope project thread-mind -- npx -y thread-mind-mcp
+
+# Windows: npx is a .cmd script, wrap it in cmd /c
+claude mcp add --scope project thread-mind -- cmd /c npx -y thread-mind-mcp
+```
+
+The resulting `.mcp.json` (you can also write it by hand):
+
 ```json
 {
   "mcpServers": {
@@ -86,51 +95,34 @@ Add to your Claude Code MCP settings (`~/.claude/settings.json` or project `.cla
 }
 ```
 
-**Windows:**
-```json
-{
-  "mcpServers": {
-    "thread-mind": {
-      "type": "stdio",
-      "command": "cmd",
-      "args": ["/c", "npx", "thread-mind-mcp"],
-      "env": {}
-    }
-  }
-}
+On Windows, use `"command": "cmd"` and `"args": ["/c", "npx", "-y", "thread-mind-mcp"]`. Each teammate approves the server the first time Claude Code starts it in the repository.
+
+For yourself only, drop `--scope project` (default `local` scope: you, in this project) or use `--scope user` (you, in every project). Both are stored in `~/.claude.json`, which Claude Code manages.
+
+| Scope | Stored in | Applies to |
+|-------|-----------|-----------|
+| `local` (default) | `~/.claude.json`, under the current project | You, in this project |
+| `project` | `.mcp.json` at the project root | Everyone who clones the repository |
+| `user` | `~/.claude.json` | You, in every project |
+
+> Claude Code doesn't read MCP servers from `~/.claude/settings.json` or `.claude/settings.json`. Check the configuration with `claude mcp list`, or `/mcp` inside a session.
+
+**Windows + Volta:** if Claude Code can't resolve Volta's `npx` shim, delegate to `volta run`:
+
+```bash
+claude mcp add --scope project thread-mind -- cmd /c volta run npx -y thread-mind-mcp
 ```
-
-> On Windows, `npx` must be wrapped with `cmd /c` because `npx` is a `.cmd` wrapper and cannot be spawned directly by the MCP stdio transport.
-
-**Windows + Volta:**
-
-If you use Volta as your Node.js version manager, use `volta run` to ensure the correct Node.js version is resolved when Claude Code spawns the MCP subprocess:
-
-```json
-{
-  "mcpServers": {
-    "thread-mind": {
-      "type": "stdio",
-      "command": "cmd",
-      "args": ["/c", "volta", "run", "npx", "-y", "thread-mind-mcp"],
-      "env": {}
-    }
-  }
-}
-```
-
-Or via CLI: `claude mcp add thread-mind-mcp --scope project -- cmd /c volta run npx -y thread-mind-mcp`
 
 ### Configure with other MCP clients
 
-ThreadMind uses the **stdio transport**, compatible with any MCP client. Use the same configuration above for your platform.
+ThreadMind uses the **stdio transport**, compatible with any MCP client (Cursor, Windsurf, Codex…). Add the same `mcpServers` entry as in `.mcp.json` above to your client's MCP configuration file.
 
 ### Workspace location
 
 ThreadMind stores its data in `.threadmind/` at the root of your workspace, found in this order:
 
 1. The `THREADMIND_ROOT` environment variable, if set
-2. The workspace roots advertised by the MCP client (a root that already contains `.threadmind/` wins)
+2. The workspace roots advertised by the MCP client (a root that already contains `.threadmind/` wins). Claude Code advertises the directory you started it in, plus those added with `--add-dir`: start it from the project root
 3. The directory the server was started from
 
 A client that starts servers outside your project without advertising roots (for example a desktop chat app with no project folder) needs `THREADMIND_ROOT`:
