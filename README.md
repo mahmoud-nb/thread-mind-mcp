@@ -48,11 +48,17 @@ With the [Claude Code plugin](#claude-code-plugin-recommended), the context relo
 /plugin install thread-mind@thread-mind
 ```
 
-The plugin installs the server and adds:
+The plugin installs the server and adds hooks that:
 
-- a **SessionStart hook** that loads the active thread's context at startup, after `/clear` and after compaction (nothing happens in repositories without a ThreadMind project)
-- a **SessionEnd hook** that records how large the conversation grew, read from its transcript, for `stats_show`
-- **commands**: `/thread-mind:context`, `/thread-mind:tree`, `/thread-mind:create`, `/thread-mind:switch`, `/thread-mind:summary`, `/thread-mind:merge`, `/thread-mind:stats`
+- **load the active thread's context** at startup, after `/clear` and after compaction (nothing happens in repositories without a ThreadMind project)
+- **remind Claude to save the summary** as the conversation grows, and once more when the context window is nearly full
+- **recover the summary after a compaction** that happened before it was saved, and tell you when `/clear` dropped unsaved work
+- **follow git branch changes**, giving Claude the new active thread's context
+- **record the files Claude edits** with the next summary, so it gets flagged when they change
+- **answer `tm:tree` and `tm:stats` instantly**, without using tokens
+- **measure how large conversations grow**, read from their transcripts, for `stats_show`
+
+It also brings **commands** (`/thread-mind:context`, `/thread-mind:tree`, `/thread-mind:create`, `/thread-mind:switch`, `/thread-mind:summary`, `/thread-mind:merge`, `/thread-mind:stats`) and **options** in `/config`. A **status line** (`thread-mind-mcp status-line`) keeps the active thread and its unsaved work in view. See the [plugin guide](https://mahmoud-nb.github.io/thread-mind-mcp/guide/claude-code-plugin).
 
 If you configured ThreadMind manually before, remove that configuration so Claude Code doesn't run two servers.
 
@@ -563,7 +569,7 @@ Development setup, tests, releases and publishing to the MCP Registry are descri
 
 ```
 src/
-  index.ts              # Entry point — stdio server, or `hook <event>` for the Claude Code hooks
+  index.ts              # Entry point — stdio server, `hook <event>` or `status-line` for Claude Code
   server.ts             # McpServer factory (tools + resources + prompts + instructions)
   services.ts           # Services over one .threadmind directory, shared by server and hooks
   types/
@@ -584,9 +590,16 @@ src/
     instructions.ts     # Server instructions and instruction files
     stats.ts            # Session measurements and statistics report
   hooks/
-    index.ts            # SessionStart / SessionEnd hooks of the Claude Code plugin
+    index.ts            # SessionStart / SessionEnd command hooks of the Claude Code plugin
+    guard.ts            # Session hooks: reminders, compaction, branch changes, edited files
+    session-context.ts  # Context injected by hooks, sized to Claude Code's limit
+    transcript.ts       # Conversation sizes read from Claude Code transcripts
+    settings.ts         # Hook options, from the server's environment
+    session-cache.ts    # State shared between the hooks and the status line
+    status-line.ts      # Claude Code status line
   tools/
     index.ts            # 14 MCP tools with Zod schemas and annotations
+    hook.ts             # threadmind_hook, called by the plugin's hooks
   resources/
     index.ts            # 2 MCP resources + the thread resource template
   prompts/

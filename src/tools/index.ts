@@ -7,9 +7,10 @@ import {
 } from "../core/instructions.js";
 import { ID_PATTERN, ID_PATTERN_MESSAGE } from "../core/ids.js";
 import { formatContext } from "../core/context.js";
-import { formatStatsReport } from "../core/stats.js";
+import { statsReport } from "../core/stats.js";
 import { SECTIONS } from "../core/summary.js";
 import { headCommit } from "../core/git.js";
+import type { HookGuard } from "../hooks/guard.js";
 
 const id = () => z.string().regex(ID_PATTERN, ID_PATTERN_MESSAGE);
 
@@ -23,6 +24,9 @@ const maxTokens = () =>
       "Token budget: the farthest ancestors are left out first to fit it"
     );
 
+/** Paths kept on a thread to flag its summary when they change. */
+const MAX_PATHS = 30;
+
 // All tools work on local files only
 const READ_ONLY = { readOnlyHint: true, openWorldHint: false } as const;
 const WRITE = {
@@ -31,8 +35,12 @@ const WRITE = {
   openWorldHint: false,
 } as const;
 
-export function registerTools(server: McpServer, services: Services): void {
-  const { storage, project, thread, context, stats, session } = services;
+export function registerTools(
+  server: McpServer,
+  services: Services,
+  guard?: HookGuard
+): void {
+  const { storage, project, thread, context, session } = services;
 
   /** The session's project and thread, or an error telling the model how to recover. */
   async function requireActive(): Promise<ActiveThread> {
@@ -287,7 +295,7 @@ export function registerTools(server: McpServer, services: Services): void {
           .array(z.string())
           .optional()
           .describe(
-            "Files or directories this thread is about, used to flag the summary when they change"
+            "Files or directories this thread is about, used to flag the summary when they change. When omitted, the files edited during the session are added, if the Claude Code plugin reported them."
           ),
       },
       annotations: { ...WRITE, destructiveHint: true, idempotentHint: false },
@@ -296,6 +304,20 @@ export function registerTools(server: McpServer, services: Services): void {
       try {
         const active = await requireActive();
         const resolvedThread = threadId ?? active.threadId;
+
+        // Files edited on this thread, reported by the Claude Code hooks
+        const touched =
+          guard?.takeTouchedPaths(active.projectId, resolvedThread) ?? [];
+        let recorded = paths;
+        if (!recorded && touched.length > 0) {
+          const { metadata } = await storage.readThread(
+            active.projectId,
+            resolvedThread
+          );
+          recorded = [...new Set([...(metadata.paths ?? []), ...touched])].slice(
+            -MAX_PATHS
+          );
+        }
 
         await thread.updateSummary({
           projectId: active.projectId,
@@ -306,11 +328,18 @@ export function registerTools(server: McpServer, services: Services): void {
           section,
           replaceSection,
           commit: (await headCommit(await storage.workspaceRoot())) ?? undefined,
-          paths,
+          paths: recorded,
         });
 
         const what = section ? `Section "${section}" of the summary` : "Summary";
-        return textResult(`${what} updated for thread "${resolvedThread}".`);
+        const linked =
+          !paths && recorded
+            ? `
+Files recorded with it, to flag it when they change: ${listPaths(recorded)}.`
+            : "";
+        return textResult(
+          `${what} updated for thread "${resolvedThread}".${linked}`
+        );
       } catch (error) {
         return errorResult(error);
       }
@@ -570,26 +599,17 @@ export function registerTools(server: McpServer, services: Services): void {
     async () => {
       try {
         const active = await requireActive();
-        const projectConfig = await project.get(active.projectId);
-        const result = await context.assemble(
-          active.projectId,
-          active.threadId
-        );
-
-        return textResult(
-          formatStatsReport({
-            projectTitle: projectConfig.title,
-            threads: await storage.listThreads(active.projectId),
-            activeThreadId: active.threadId,
-            context: result,
-            sessions: await stats.sessions(),
-          })
-        );
+        return textResult(await statsReport(services, active));
       } catch (error) {
         return errorResult(error);
       }
     }
   );
+}
+
+function listPaths(paths: string[]): string {
+  const shown = paths.slice(-5).join(", ");
+  return paths.length > 5 ? `${shown} and ${paths.length - 5} more` : shown;
 }
 
 function textResult(text: string) {

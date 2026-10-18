@@ -1,6 +1,8 @@
 import { estimateTokens } from "./context.js";
 import { nowIso } from "./clock.js";
 import type {
+  ActiveThread,
+  Services,
   StorageService,
   StatsService,
   SessionMeasurement,
@@ -64,6 +66,25 @@ export class StatsServiceImpl implements StatsService {
       });
     });
   }
+}
+
+/** The statistics report of the active project, as stats_show returns it. */
+export async function statsReport(
+  services: Services,
+  active: ActiveThread
+): Promise<string> {
+  const project = await services.project.get(active.projectId);
+  const context = await services.context.assemble(
+    active.projectId,
+    active.threadId
+  );
+  return formatStatsReport({
+    projectTitle: project.title,
+    threads: await services.storage.listThreads(active.projectId),
+    activeThreadId: active.threadId,
+    context,
+    sessions: await services.stats.sessions(),
+  });
 }
 
 export function formatStatsReport(opts: {

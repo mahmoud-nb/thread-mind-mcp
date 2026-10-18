@@ -1,9 +1,9 @@
 {
-  "description": "Load the active ThreadMind thread when a session starts, and measure how large conversations grow",
+  "description": "Load the active ThreadMind thread when a session starts, keep its summary saved as the conversation grows, follow git branch changes and measure how large conversations grow",
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "startup|clear|compact",
+        "matcher": "startup",
         "hooks": [
           {
             "type": "command",
@@ -14,6 +14,123 @@
               "session-start"
             ],
             "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "clear|compact",
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "plugin:thread-mind:thread-mind",
+            "tool": "threadmind_hook",
+            "input": {
+              "event": "session-start",
+              "session_id": "${session_id}",
+              "source": "${source}"
+            }
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "plugin:thread-mind:thread-mind",
+            "tool": "threadmind_hook",
+            "input": {
+              "event": "user-prompt",
+              "session_id": "${session_id}",
+              "prompt": "${prompt}"
+            }
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "plugin:thread-mind:thread-mind",
+            "tool": "threadmind_hook",
+            "input": {
+              "event": "file-edited",
+              "session_id": "${session_id}",
+              "file_path": "${tool_input.file_path}"
+            }
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "plugin:thread-mind:thread-mind",
+            "tool": "threadmind_hook",
+            "input": {
+              "event": "branch-check",
+              "session_id": "${session_id}"
+            },
+            "if": "Bash(git switch *)"
+          },
+          {
+            "type": "mcp_tool",
+            "server": "plugin:thread-mind:thread-mind",
+            "tool": "threadmind_hook",
+            "input": {
+              "event": "branch-check",
+              "session_id": "${session_id}"
+            },
+            "if": "Bash(git checkout *)"
+          },
+          {
+            "type": "mcp_tool",
+            "server": "plugin:thread-mind:thread-mind",
+            "tool": "threadmind_hook",
+            "input": {
+              "event": "branch-check",
+              "session_id": "${session_id}"
+            },
+            "if": "Bash(gh pr checkout *)"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "plugin:thread-mind:thread-mind",
+            "tool": "threadmind_hook",
+            "input": {
+              "event": "stop",
+              "session_id": "${session_id}",
+              "transcript_path": "${transcript_path}",
+              "stop_hook_active": "${stop_hook_active}"
+            }
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "plugin:thread-mind:thread-mind",
+            "tool": "threadmind_hook",
+            "input": {
+              "event": "pre-compact",
+              "session_id": "${session_id}",
+              "transcript_path": "${transcript_path}",
+              "trigger": "${trigger}"
+            }
           }
         ]
       }

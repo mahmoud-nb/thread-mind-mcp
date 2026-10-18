@@ -3,7 +3,9 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { conversationSize, handleHook } from "../../src/hooks/index.js";
+import { handleHook } from "../../src/hooks/index.js";
+import { HOOK_TEXT_LIMIT } from "../../src/hooks/session-context.js";
+import { conversationSize, transcriptTurns } from "../../src/hooks/transcript.js";
 import { createServices } from "../../src/services.js";
 import type { Services } from "../../src/types/index.js";
 
@@ -87,6 +89,23 @@ describe("session-start hook", () => {
     expect(output).toContain("The conversation was just compacted");
   });
 
+  it("fits the context in what Claude Code accepts from a hook", async () => {
+    await setUpProject(
+      "## State\n" + "- A long line of state for the summary\n".repeat(600)
+    );
+
+    const output = await handleHook(
+      "session-start",
+      { cwd: root, session_id: "s1", source: "startup" },
+      {}
+    );
+
+    const context: string = JSON.parse(output!).hookSpecificOutput.additionalContext;
+    expect(context.length).toBeLessThanOrEqual(HOOK_TEXT_LIMIT);
+    expect(context).toContain("It was shortened to fit: call context_get");
+    expect(context).toContain("Cut to fit the token budget.");
+  });
+
   it("finds the project from CLAUDE_PROJECT_DIR, then THREADMIND_ROOT", async () => {
     await setUpProject("Summary.");
     const elsewhere = { cwd: join(root, "..") };
@@ -160,6 +179,28 @@ describe("conversationSize", () => {
     );
 
     expect(await conversationSize(path)).toBe(1230);
+  });
+
+  it("skips the messages Claude Code writes itself", async () => {
+    const path = join(root, "t.jsonl");
+    await writeFile(
+      path,
+      transcript(
+        assistant(
+          { input_tokens: 500, output_tokens: 20 },
+          { timestamp: "2026-01-01T00:00:00Z" }
+        ),
+        {
+          type: "assistant",
+          message: { model: "<synthetic>", usage: { input_tokens: 0, output_tokens: 0 } },
+        }
+      )
+    );
+
+    expect(await conversationSize(path)).toBe(520);
+    expect(await transcriptTurns(path)).toEqual([
+      { timestamp: "2026-01-01T00:00:00Z", prompt: 500, size: 520 },
+    ]);
   });
 
   it("returns null without usage data or transcript", async () => {

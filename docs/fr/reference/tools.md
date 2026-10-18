@@ -1,6 +1,6 @@
 # Référence des outils
 
-ThreadMind expose 14 outils MCP. Tous retournent des réponses textuelles structurées et utilisent `isError: true` en cas d'échec.
+ThreadMind expose 14 outils MCP. Tous retournent des réponses textuelles structurées et utilisent `isError: true` en cas d'échec. Lancé par le plugin Claude Code, le serveur expose aussi [`threadmind_hook`](#threadmind-hook), que seuls les hooks du plugin appellent.
 
 Chaque outil déclare un titre et des annotations MCP : `readOnlyHint` pour `project_list`, `thread_list`, `context_get` et `stats_show` ; `destructiveHint` pour `thread_delete`, `summary_update` (qui peut remplacer le résumé précédent) et `thread_merge` (qui remplace le résumé du parent). Les clients peuvent s'en servir pour décider quand demander une confirmation.
 
@@ -226,9 +226,9 @@ Met à jour le résumé d'un thread, ou l'une de ses sections.
 | `threadId` | `string` | Non | Thread à mettre à jour (défaut : thread actif) |
 | `section` | `string` | Non | Ne mettre à jour que cette section : `decisions`, `constraints`, `state`, `open-questions` ou `next-steps` |
 | `replaceSection` | `boolean` | Non | Remplacer la section au lieu de la compléter (pour `state` et `next-steps`) |
-| `paths` | `string[]` | Non | Fichiers ou dossiers dont parle le thread ; une liste vide les efface |
+| `paths` | `string[]` | Non | Fichiers ou dossiers dont parle le thread ; une liste vide les efface. S'il est omis, les fichiers modifiés par Claude sur le thread depuis le dernier enregistrement sont ajoutés, si le [plugin Claude Code](/fr/guide/claude-code-plugin#les-fichiers-modifies-enregistres-avec-le-resume) les a signalés |
 
-**Retourne :** Confirmation avec l'ID du thread.
+**Retourne :** Confirmation avec l'ID du thread, et les fichiers enregistrés avec le résumé quand le plugin les a signalés.
 
 **Contraintes :**
 - En mode équipe, seulement vos propres threads
@@ -398,6 +398,18 @@ Summary and context sizes are estimates (~3.5 characters per token); conversatio
 ```
 
 Sans le plugin, la partie mesurée explique comment obtenir des mesures. Les tailles de conversation sont lues dans les données d'usage des transcripts par le hook `SessionEnd` du plugin ; voir [Plugin Claude Code](/fr/guide/claude-code-plugin#des-statistiques-mesurees).
+
+---
+
+## Outil des hooks
+
+### `threadmind_hook`
+
+Le point d'entrée des hooks du [plugin Claude Code](/fr/guide/claude-code-plugin#hooks-et-fichiers). Il n'existe que lorsque le serveur tourne avec `THREADMIND_HOOKS=1`, comme le lance le plugin ; l'IA a pour consigne de ne jamais l'appeler.
+
+**Paramètres :** `event` (`session-start`, `stop`, `pre-compact`, `user-prompt`, `file-edited` ou `branch-check`), plus les champs de l'entrée du hook Claude Code utiles à cet événement : `session_id`, `transcript_path`, `source`, `trigger`, `stop_hook_active`, `prompt`, `file_path`.
+
+**Retourne :** Une sortie de hook Claude Code en JSON, ou aucun contenu quand le hook n'a rien à faire.
 
 ---
 

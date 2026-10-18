@@ -13,6 +13,7 @@ import {
   ResourceListChangedNotificationSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { createServer } from "../../src/server.js";
+import { SessionCache } from "../../src/hooks/session-cache.js";
 import type { Services } from "../../src/types/index.js";
 import { commitFile, git } from "../helpers/git.js";
 
@@ -539,6 +540,64 @@ describe("workspace resolution", () => {
       expect(existsSync(join(fromClient, ".threadmind"))).toBe(false);
     } finally {
       await rootsClient.close();
+    }
+  });
+});
+
+describe("Claude Code plugin hooks", () => {
+  /** A client of a server started the way the plugin starts it. */
+  async function pluginClient(): Promise<Client> {
+    const { server } = createServer(join(root, ".threadmind"), {
+      env: { THREADMIND_HOOKS: "1" },
+      hookCache: new SessionCache(join(root, "cache")),
+    });
+    return connect(server);
+  }
+
+  it("keeps the hook tool hidden from other clients", async () => {
+    const { tools } = await client.listTools();
+    expect(tools.map((t) => t.name)).not.toContain("threadmind_hook");
+  });
+
+  it("answers hooks with Claude Code's hook output, or nothing", async () => {
+    const plugin = await pluginClient();
+    try {
+      await call("project_create", { title: "Shop" }, plugin);
+
+      const tree = await call("threadmind_hook", { event: "user-prompt", prompt: "tm:tree" }, plugin);
+      expect(JSON.parse(tree.text)).toMatchObject({ decision: "block", reason: "main ← active" });
+
+      const quiet = await call(
+        "threadmind_hook",
+        { event: "stop", session_id: "s1", transcript_path: join(root, "none.jsonl"), stop_hook_active: false },
+        plugin
+      );
+      expect(quiet).toEqual({ text: "", isError: false });
+    } finally {
+      await plugin.close();
+    }
+  });
+
+  it("records the files edited in the session with the next summary", async () => {
+    const plugin = await pluginClient();
+    try {
+      await call("project_create", { title: "Shop" }, plugin);
+      for (const file_path of [join(root, "src", "cart.ts"), join(root, "src", "pay.ts")]) {
+        await call("threadmind_hook", { event: "file-edited", file_path }, plugin);
+      }
+
+      const { text } = await call("summary_update", { content: "## State\n- Cart done" }, plugin);
+      expect(text).toContain("Files recorded with it, to flag it when they change: src/cart.ts, src/pay.ts.");
+      const { metadata } = await services.storage.readThread("shop", "main");
+      expect(metadata.paths).toEqual(["src/cart.ts", "src/pay.ts"]);
+
+      // Explicit paths win, and the edited files are only recorded once
+      await call("threadmind_hook", { event: "file-edited", file_path: join(root, "README.md") }, plugin);
+      await call("summary_update", { content: "## State\n- Docs", paths: ["docs"] }, plugin);
+      await call("summary_update", { content: "## State\n- Again" }, plugin);
+      expect((await services.storage.readThread("shop", "main")).metadata.paths).toEqual(["docs"]);
+    } finally {
+      await plugin.close();
     }
   });
 });

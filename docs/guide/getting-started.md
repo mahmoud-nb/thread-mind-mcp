@@ -34,7 +34,7 @@ npx thread-mind-mcp
 /plugin install thread-mind@thread-mind
 ```
 
-The plugin installs the server and loads the active thread's context at the start of every session, after `/clear` and after compaction. See [Claude Code Plugin](/guide/claude-code-plugin). The manual configurations below are alternatives: don't combine them with the plugin.
+The plugin installs the server and loads the active thread's context at the start of every session, after `/clear` and after compaction. It also reminds Claude to save the summary as the conversation grows, and follows your git branches. See [Claude Code Plugin](/guide/claude-code-plugin). The manual configurations below are alternatives: don't combine them with the plugin.
 
 ---
 

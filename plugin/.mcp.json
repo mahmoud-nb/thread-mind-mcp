@@ -2,7 +2,18 @@
   "mcpServers": {
     "thread-mind": {
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/node_modules/thread-mind-mcp/dist/index.js"]
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/node_modules/thread-mind-mcp/dist/index.js"
+      ],
+      "env": {
+        "THREADMIND_HOOKS": "1",
+        "THREADMIND_REMINDERS": "${user_config.reminders}",
+        "THREADMIND_REMINDER_TOKENS": "${user_config.reminder_tokens}",
+        "THREADMIND_CONTEXT_THRESHOLD": "${user_config.context_threshold}",
+        "THREADMIND_COMPACT_SUMMARY": "${user_config.compact_summary}",
+        "THREADMIND_INSTANT_COMMANDS": "${user_config.instant_commands}",
+        "THREADMIND_CONTEXT_WINDOW": "${user_config.context_window}"
+      }
     }
   }
 }

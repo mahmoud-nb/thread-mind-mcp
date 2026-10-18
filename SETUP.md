@@ -97,6 +97,9 @@ git push origin master --follow-tags
 
 `plugin/package-lock.json` is what makes Claude Code install the server inside the plugin: check it exists and names the new version before pushing. If `plugin:sync` fails because npm doesn't serve the new version yet, run `npm run plugin:sync` again a minute later.
 
+> [!WARNING]
+> Claude Code installs the plugin from the files on `master`, with the server version that `plugin/package.json` names. Plugin files that rely on a new server feature (a hook calling a new tool, a new environment variable) must not reach `master` before that server version is on npm: merge them into `master` and push only after `npm run release:*` has run.
+
 ---
 
 ## Publishing to the MCP Registry

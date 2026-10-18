@@ -2,7 +2,7 @@
   "name": "thread-mind",
   "displayName": "ThreadMind",
   "version": "0.5.1",
-  "description": "Git-friendly memory for AI coding sessions: a tree of thread summaries, loaded automatically when a session starts",
+  "description": "Git-friendly memory for AI coding sessions: a tree of thread summaries, loaded when a session starts and kept up to date as it goes",
   "author": {
     "name": "Mahmoud NBET",
     "url": "https://github.com/mahmoud-nb"
@@ -16,5 +16,54 @@
     "context",
     "threads",
     "git"
-  ]
+  ],
+  "userConfig": {
+    "reminders": {
+      "type": "string",
+      "title": "Summary reminders",
+      "description": "When the conversation grows while the thread's summary isn't saved: nudge (Claude saves it), warn (only you are told) or off",
+      "options": [
+        "nudge",
+        "warn",
+        "off"
+      ],
+      "default": "nudge"
+    },
+    "reminder_tokens": {
+      "type": "number",
+      "title": "Tokens between reminders",
+      "description": "How much the conversation grows, in tokens, before each reminder",
+      "default": 50000,
+      "min": 1000,
+      "max": 1000000
+    },
+    "context_threshold": {
+      "type": "number",
+      "title": "Last reminder before compaction (% of context)",
+      "description": "When the context window is this full, Claude is reminded to save the summary before the conversation gets compacted",
+      "default": 70,
+      "min": 10,
+      "max": 99
+    },
+    "compact_summary": {
+      "type": "boolean",
+      "title": "Save the summary after a compaction",
+      "description": "When the conversation is compacted before its work was saved, Claude saves the summary first thing afterwards",
+      "default": true
+    },
+    "instant_commands": {
+      "type": "boolean",
+      "title": "Instant tm:tree and tm:stats",
+      "description": "Show the thread tree and statistics directly, without sending the request to Claude (no tokens used)",
+      "default": true
+    },
+    "context_window": {
+      "type": "number",
+      "title": "Context window size (tokens)",
+      "description": "0 to detect it. The ThreadMind status line reports the exact size",
+      "default": 0,
+      "min": 0,
+      "max": 10000000
+    }
+  }
 }

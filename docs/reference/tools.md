@@ -1,6 +1,6 @@
 # Tools Reference
 
-ThreadMind exposes 14 MCP tools. All tools return structured text responses and use `isError: true` on failure.
+ThreadMind exposes 14 MCP tools. All tools return structured text responses and use `isError: true` on failure. Started by the Claude Code plugin, the server also exposes [`threadmind_hook`](#threadmind-hook), which only the plugin's hooks call.
 
 Each tool declares a title and MCP annotations: `readOnlyHint` for `project_list`, `thread_list`, `context_get` and `stats_show`; `destructiveHint` for `thread_delete`, `summary_update` (which can replace the previous summary) and `thread_merge` (which replaces the parent's summary). Clients can use them to decide when to ask for confirmation.
 
@@ -226,9 +226,9 @@ Update the summary of a thread, or one of its sections.
 | `threadId` | `string` | No | Thread to update (defaults to active thread) |
 | `section` | `string` | No | Only update this section: `decisions`, `constraints`, `state`, `open-questions` or `next-steps` |
 | `replaceSection` | `boolean` | No | Replace the section instead of adding to it (for `state` and `next-steps`) |
-| `paths` | `string[]` | No | Files or directories the thread is about; an empty list clears them |
+| `paths` | `string[]` | No | Files or directories the thread is about; an empty list clears them. When omitted, the files Claude edited on the thread since the last save are added, if the [Claude Code plugin](/guide/claude-code-plugin#edited-files-recorded-with-the-summary) reported them |
 
-**Returns:** Confirmation with thread ID.
+**Returns:** Confirmation with thread ID, and the files recorded with the summary when the plugin reported them.
 
 **Constraints:**
 - In team mode, can only update threads you authored
@@ -398,6 +398,18 @@ Summary and context sizes are estimates (~3.5 characters per token); conversatio
 ```
 
 Without the plugin, the measured section explains how to get measurements. Conversation sizes are read from the transcripts' usage data by the plugin's `SessionEnd` hook; see [Claude Code Plugin](/guide/claude-code-plugin#measured-statistics).
+
+---
+
+## Hook Tool
+
+### `threadmind_hook`
+
+The endpoint of the [Claude Code plugin](/guide/claude-code-plugin#hooks-and-files)'s hooks. It only exists when the server runs with `THREADMIND_HOOKS=1`, as the plugin starts it; the AI is told never to call it.
+
+**Parameters:** `event` (`session-start`, `stop`, `pre-compact`, `user-prompt`, `file-edited` or `branch-check`), plus the fields of the Claude Code hook input that event needs: `session_id`, `transcript_path`, `source`, `trigger`, `stop_hook_active`, `prompt`, `file_path`.
+
+**Returns:** A Claude Code hook output in JSON, or no content when the hook has nothing to do.
 
 ---
 
